@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Download, Upload, BarChart3, Package, Settings as SettingsIcon, MapPin, Truck, Store, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Download, Upload, BarChart3, Package, Settings as SettingsIcon, MapPin, Truck, Store, User, AlertTriangle, MinusCircle } from 'lucide-react';
 
 /* ===================== CONFIG PRODUÇÃO ===================== */
 // Taxas de produção para HORA MÁQUINA - TELHAS NORMAIS (metros/hora)
@@ -33,6 +33,18 @@ const HORAS_DIA = 8; // 8 horas por dia conforme Excel
 const BUFFER_PRAZO_FIXO = 0; // Buffer FIXO de 5 dias (igual ao Excel: =C11+5)
 const HORAS_MES_POR_MAQUINA = 800; // Capacidade mensal por máquina
 
+// Estoque inicial baseado no Excel
+const ESTOQUE_INICIAL = [
+  { id: '1', material: 'EPS TP 40-30mm', estoqueMinimo: 2000, estoqueAtual: 1750, ultimaAtualizacao: new Date().toISOString() },
+  { id: '2', material: 'EPS TP 25-30mm', estoqueMinimo: 1500, estoqueAtual: 1328, ultimaAtualizacao: new Date().toISOString() },
+  { id: '3', material: 'EPS TP 40-50mm', estoqueMinimo: 1000, estoqueAtual: 587, ultimaAtualizacao: new Date().toISOString() },
+  { id: '4', material: 'EPS Forro - 50mm', estoqueMinimo: 0, estoqueAtual: 510, ultimaAtualizacao: new Date().toISOString() },
+  { id: '5', material: 'EPS Forro - 30mm', estoqueMinimo: 1000, estoqueAtual: 420, ultimaAtualizacao: new Date().toISOString() },
+  { id: '6', material: 'PIR TP 40-30MM', estoqueMinimo: 1500, estoqueAtual: 1536, ultimaAtualizacao: new Date().toISOString() },
+  { id: '7', material: 'PIR TP 40-50MM', estoqueMinimo: 1000, estoqueAtual: 680, ultimaAtualizacao: new Date().toISOString() },
+  { id: '8', material: 'PIR TP 25-30MM', estoqueMinimo: 0, estoqueAtual: 48, ultimaAtualizacao: new Date().toISOString(), sobEncomenda: true },
+];
+
 /* ===================== FUNÇÕES AUX ===================== */
 const hojeISO = () => new Date().toISOString().split('T')[0];
 
@@ -53,9 +65,22 @@ const formatarDataBR = (iso) => {
   return `${d}/${m}/${a}`;
 };
 
+const formatarDataHoraBR = (isoString) => {
+  if (!isoString) return '';
+  const data = new Date(isoString);
+  return data.toLocaleString('pt-BR', { 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 // Funções para gerenciar localStorage
 const STORAGE_KEY = 'mestre-aco-pedidos';
 const CONFIG_KEY = 'mestre-aco-config';
+const ESTOQUE_KEY = 'mestre-aco-estoque';
 
 const salvarPedidos = (pedidos) => {
   try {
@@ -104,7 +129,403 @@ const carregarConfig = () => {
   };
 };
 
+const salvarEstoque = (estoque) => {
+  try {
+    localStorage.setItem(ESTOQUE_KEY, JSON.stringify(estoque));
+    return true;
+  } catch (error) {
+    console.error('Erro ao salvar estoque:', error);
+    return false;
+  }
+};
+
+const carregarEstoque = () => {
+  try {
+    const data = localStorage.getItem(ESTOQUE_KEY);
+    return data ? JSON.parse(data) : ESTOQUE_INICIAL;
+  } catch (error) {
+    console.error('Erro ao carregar estoque:', error);
+    return ESTOQUE_INICIAL;
+  }
+};
+
 /* ===================== COMPONENTES AUXILIARES ===================== */
+
+const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
+  const [editandoItem, setEditandoItem] = useState(null);
+  const [formEstoque, setFormEstoque] = useState({
+    material: '',
+    estoqueMinimo: '',
+    estoqueAtual: '',
+    sobEncomenda: false
+  });
+
+  // Calcular estoque considerando consumo dos pedidos
+  const estoqueComConsumo = useMemo(() => {
+    return estoque.map(item => {
+      // Somar consumo de todos os pedidos para este material
+      const consumoTotal = pedidos.reduce((acc, pedido) => {
+        if (!pedido.materiais) return acc;
+        const consumoMaterial = pedido.materiais.find(m => m.materialId === item.id);
+        return acc + (consumoMaterial ? parseFloat(consumoMaterial.quantidade) || 0 : 0);
+      }, 0);
+
+      const estoqueDisponivel = item.estoqueAtual - consumoTotal;
+
+      return {
+        ...item,
+        consumoTotal,
+        estoqueDisponivel
+      };
+    });
+  }, [estoque, pedidos]);
+
+  const handleSubmitEstoque = (e) => {
+    e.preventDefault();
+    
+    if (!formEstoque.material || !formEstoque.estoqueAtual) {
+      return alert('Preencha os campos obrigatórios');
+    }
+
+    let novoEstoque;
+    if (editandoItem) {
+      novoEstoque = estoque.map(item => 
+        item.id === editandoItem.id 
+          ? { 
+              ...item, 
+              material: formEstoque.material,
+              estoqueMinimo: formEstoque.sobEncomenda ? 0 : parseFloat(formEstoque.estoqueMinimo) || 0,
+              estoqueAtual: parseFloat(formEstoque.estoqueAtual) || 0,
+              sobEncomenda: formEstoque.sobEncomenda,
+              ultimaAtualizacao: new Date().toISOString()
+            }
+          : item
+      );
+    } else {
+      const novoItem = {
+        id: Date.now().toString(),
+        material: formEstoque.material,
+        estoqueMinimo: formEstoque.sobEncomenda ? 0 : parseFloat(formEstoque.estoqueMinimo) || 0,
+        estoqueAtual: parseFloat(formEstoque.estoqueAtual) || 0,
+        sobEncomenda: formEstoque.sobEncomenda,
+        ultimaAtualizacao: new Date().toISOString()
+      };
+      novoEstoque = [...estoque, novoItem];
+    }
+
+    setEstoque(novoEstoque);
+    salvarEstoque(novoEstoque);
+    resetFormEstoque();
+  };
+
+  const resetFormEstoque = () => {
+    setFormEstoque({
+      material: '',
+      estoqueMinimo: '',
+      estoqueAtual: '',
+      sobEncomenda: false
+    });
+    setEditandoItem(null);
+  };
+
+  const handleEditarEstoque = (item) => {
+    setFormEstoque({
+      material: item.material,
+      estoqueMinimo: item.estoqueMinimo.toString(),
+      estoqueAtual: item.estoqueAtual.toString(),
+      sobEncomenda: item.sobEncomenda || false
+    });
+    setEditandoItem(item);
+  };
+
+  const handleExcluirEstoque = (id) => {
+    // Verificar se há pedidos usando este material
+    const pedidosComMaterial = pedidos.filter(p => 
+      p.materiais && p.materiais.some(m => m.materialId === id)
+    );
+
+    if (pedidosComMaterial.length > 0) {
+      return alert(`Não é possível excluir este material. Ele está sendo usado em ${pedidosComMaterial.length} pedido(s).`);
+    }
+
+    if (window.confirm('Deseja excluir este item do estoque?')) {
+      const novoEstoque = estoque.filter(item => item.id !== id);
+      setEstoque(novoEstoque);
+      salvarEstoque(novoEstoque);
+    }
+  };
+
+  const calcularComplemento = (item) => {
+    if (item.sobEncomenda || item.estoqueMinimo === 0) return '-';
+    const complemento = item.estoqueMinimo - item.estoqueDisponivel;
+    return complemento > 0 ? complemento : 0;
+  };
+
+  const getNivelEstoque = (item) => {
+    if (item.sobEncomenda) return 'sob-encomenda';
+    if (item.estoqueMinimo === 0) return 'sem-minimo';
+    
+    const percentual = (item.estoqueDisponivel / item.estoqueMinimo) * 100;
+    if (percentual >= 80) return 'ok';
+    if (percentual >= 50) return 'atencao';
+    return 'critico';
+  };
+
+  const resumoEstoque = useMemo(() => {
+    const criticos = estoqueComConsumo.filter(item => {
+      if (item.sobEncomenda || item.estoqueMinimo === 0) return false;
+      return item.estoqueDisponivel < item.estoqueMinimo * 0.5;
+    });
+
+    const atencao = estoqueComConsumo.filter(item => {
+      if (item.sobEncomenda || item.estoqueMinimo === 0) return false;
+      const percentual = (item.estoqueDisponivel / item.estoqueMinimo) * 100;
+      return percentual >= 50 && percentual < 80;
+    });
+
+    const consumoTotal = estoqueComConsumo.reduce((acc, item) => acc + item.consumoTotal, 0);
+
+    return { 
+      criticos: criticos.length, 
+      atencao: atencao.length, 
+      total: estoque.length,
+      consumoTotal
+    };
+  }, [estoqueComConsumo, estoque.length]);
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+        <Package className="text-purple-600" /> Controle de Estoque PIR/EPS
+      </h2>
+
+      {/* Resumo Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-red-50 border-2 border-red-200 p-5 rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-red-400 uppercase tracking-widest">Críticos</span>
+            <AlertTriangle size={20} className="text-red-500" />
+          </div>
+          <p className="text-3xl font-black text-red-600">{resumoEstoque.criticos}</p>
+          <p className="text-xs text-red-600 font-bold">Abaixo de 50% do mínimo</p>
+        </div>
+
+        <div className="bg-amber-50 border-2 border-amber-200 p-5 rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-amber-400 uppercase tracking-widest">Atenção</span>
+            <AlertTriangle size={20} className="text-amber-500" />
+          </div>
+          <p className="text-3xl font-black text-amber-600">{resumoEstoque.atencao}</p>
+          <p className="text-xs text-amber-600 font-bold">Entre 50% e 80% do mínimo</p>
+        </div>
+
+        <div className="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Total Itens</span>
+            <Package size={20} className="text-blue-500" />
+          </div>
+          <p className="text-3xl font-black text-blue-600">{resumoEstoque.total}</p>
+          <p className="text-xs text-blue-600 font-bold">Itens cadastrados</p>
+        </div>
+
+        <div className="bg-purple-50 border-2 border-purple-200 p-5 rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-purple-400 uppercase tracking-widest">Consumo Total</span>
+            <MinusCircle size={20} className="text-purple-500" />
+          </div>
+          <p className="text-3xl font-black text-purple-600">{resumoEstoque.consumoTotal.toFixed(2)}</p>
+          <p className="text-xs text-purple-600 font-bold">m² alocados em pedidos</p>
+        </div>
+      </div>
+
+      {/* Formulário */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-purple-900 mb-4">
+          {editandoItem ? '📝 Editar Item' : '➕ Adicionar/Atualizar Item'}
+        </h3>
+        <form onSubmit={handleSubmitEstoque} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Material *</label>
+            <input 
+              type="text"
+              required
+              value={formEstoque.material}
+              onChange={(e) => setFormEstoque({...formEstoque, material: e.target.value})}
+              className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none"
+              placeholder="Ex: EPS TP 40-30mm"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Estoque Mínimo (m²)</label>
+            <input 
+              type="number"
+              value={formEstoque.estoqueMinimo}
+              onChange={(e) => setFormEstoque({...formEstoque, estoqueMinimo: e.target.value})}
+              disabled={formEstoque.sobEncomenda}
+              className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="0"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Estoque Atual (m²) *</label>
+            <input 
+              type="number"
+              required
+              value={formEstoque.estoqueAtual}
+              onChange={(e) => setFormEstoque({...formEstoque, estoqueAtual: e.target.value})}
+              className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none"
+              placeholder="0"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">Sob Encomenda</label>
+            <div className="flex items-center gap-2 h-[42px]">
+              <input 
+                type="checkbox"
+                checked={formEstoque.sobEncomenda}
+                onChange={(e) => setFormEstoque({...formEstoque, sobEncomenda: e.target.checked, estoqueMinimo: e.target.checked ? '0' : formEstoque.estoqueMinimo})}
+                className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span className="text-sm font-bold text-gray-600">Sim</span>
+            </div>
+          </div>
+
+          <div className="md:col-span-4 flex justify-end gap-3 pt-4 border-t">
+            {editandoItem && (
+              <button 
+                type="button"
+                onClick={resetFormEstoque}
+                className="px-6 py-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-bold text-gray-600"
+              >
+                Cancelar
+              </button>
+            )}
+            <button 
+              type="submit"
+              className="flex items-center gap-2 bg-purple-600 text-white px-8 py-2.5 rounded-xl hover:bg-purple-700 transition-colors shadow-md font-bold"
+            >
+              <Save size={20} /> {editandoItem ? 'Atualizar' : 'Adicionar'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Tabela de Estoque */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-4 text-left font-bold text-gray-600">Material</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Estoque Mínimo</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Estoque Físico</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Consumo Pedidos</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Estoque Disponível</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Solicitar</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Status</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Última Atualização</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {estoqueComConsumo.length === 0 ? (
+                <tr>
+                  <td colSpan="9" className="text-center py-12">
+                    <div className="flex flex-col items-center text-gray-400">
+                      <Package size={48} className="mb-2 opacity-20" />
+                      <p className="text-lg">Nenhum item no estoque</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                estoqueComConsumo.map((item) => {
+                  const nivel = getNivelEstoque(item);
+                  const complemento = calcularComplemento(item);
+                  
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
+                      <td className="px-6 py-4 font-bold text-purple-900">{item.material}</td>
+                      <td className="px-6 py-4 text-center font-medium">
+                        {item.sobEncomenda ? (
+                          <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-xs font-bold">
+                            SOB ENCOMENDA
+                          </span>
+                        ) : item.estoqueMinimo === 0 ? (
+                          <span className="text-gray-400">-</span>
+                        ) : (
+                          `${item.estoqueMinimo} m²`
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-center font-black text-blue-600">{item.estoqueAtual} m²</td>
+                      <td className="px-6 py-4 text-center font-black text-red-600">
+                        {item.consumoTotal > 0 ? `${item.consumoTotal.toFixed(2)} m²` : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`font-black text-lg ${item.estoqueDisponivel < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {item.estoqueDisponivel.toFixed(2)} m²
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {typeof complemento === 'number' && complemento > 0 ? (
+                          <span className="font-black text-red-600">{complemento.toFixed(2)} m²</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {nivel === 'critico' && (
+                          <span className="bg-red-100 text-red-700 px-3 py-1 rounded-lg text-xs font-bold">
+                            CRÍTICO
+                          </span>
+                        )}
+                        {nivel === 'atencao' && (
+                          <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-xs font-bold">
+                            ATENÇÃO
+                          </span>
+                        )}
+                        {nivel === 'ok' && (
+                          <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-xs font-bold">
+                            OK
+                          </span>
+                        )}
+                        {(nivel === 'sob-encomenda' || nivel === 'sem-minimo') && (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-center text-xs text-gray-500">
+                        {formatarDataHoraBR(item.ultimaAtualizacao)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => handleEditarEstoque(item)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleExcluirEstoque(item.id)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RelatorioRegioes = ({ pedidos = [] }) => {
   const resumo = useMemo(() => {
     const regioes = {};
@@ -235,134 +656,56 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
   </div>
 );
 
-const Dashboard = ({ resumoPorMaquina, totalHorasDisponiveis, totalHorasUsadas, saldoHoras }) => {
-  const maquinaTotal = totalHorasDisponiveis;
-  const montagemTotal = totalHorasDisponiveis;
-  const cargaTotal = totalHorasDisponiveis;
-  
-  const horaMaquinaAlocada = Object.values(resumoPorMaquina).reduce((acc, m) => acc + m.horaMaquina, 0);
-  const horaMontagemAlocada = Object.values(resumoPorMaquina).reduce((acc, m) => acc + m.horaMontagem, 0);
-  const tempoTotalProducao = horaMaquinaAlocada + horaMontagemAlocada;
-  
-  const maquinaDisponivel = maquinaTotal - horaMaquinaAlocada;
-  const montagemDisponivel = montagemTotal - horaMontagemAlocada;
-  const cargaTotalDisponivel = cargaTotal - tempoTotalProducao;
-  
-  const maquinaSemanal = (maquinaTotal / 20) * 5;
-  const montagemSemanal = (montagemTotal / 20) * 5;
-  const producaoSemanal = (cargaTotal / 20) * 5;
-  
-  const diasAlocados = horaMaquinaAlocada / 8;
-  const diasMontagem = horaMontagemAlocada / 8;
-  const totalDiasProducao = tempoTotalProducao / 8;
-
+const Dashboard = ({ resumoPorMaquina }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Cards Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-blue-900 to-blue-800 text-white p-6 rounded-3xl shadow-lg">
-          <p className="text-blue-200 text-xs font-black uppercase tracking-widest mb-1">Máquina Total</p>
-          <h3 className="text-4xl font-black">{maquinaTotal.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-blue-300">Capacidade mensal</p>
-        </div>
-        <div className="bg-gradient-to-br from-amber-600 to-amber-500 text-white p-6 rounded-3xl shadow-lg">
-          <p className="text-amber-100 text-xs font-black uppercase tracking-widest mb-1">Montagem Total</p>
-          <h3 className="text-4xl font-black">{montagemTotal.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-amber-200">Capacidade mensal</p>
-        </div>
-        <div className="bg-gradient-to-br from-purple-600 to-purple-500 text-white p-6 rounded-3xl shadow-lg">
-          <p className="text-purple-100 text-xs font-black uppercase tracking-widest mb-1">Carga Total</p>
-          <h3 className="text-4xl font-black">{cargaTotal.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-purple-200">Capacidade mensal</p>
-        </div>
-      </div>
-
-      {/* Cards Alocadas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Hora Máquina Alocada</p>
-          <h3 className="text-4xl font-black text-blue-600">{horaMaquinaAlocada.toFixed(2)}h</h3>
-          <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-            <div className="bg-blue-600 h-full transition-all" style={{ width: `${Math.min(100, (horaMaquinaAlocada/maquinaTotal)*100)}%` }}></div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Hora de Montagem</p>
-          <h3 className="text-4xl font-black text-amber-600">{horaMontagemAlocada.toFixed(2)}h</h3>
-          <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-            <div className="bg-amber-600 h-full transition-all" style={{ width: `${Math.min(100, (horaMontagemAlocada/montagemTotal)*100)}%` }}></div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Tempo Total Produção</p>
-          <h3 className="text-4xl font-black text-purple-600">{tempoTotalProducao.toFixed(2)}h</h3>
-          <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-            <div className="bg-purple-600 h-full transition-all" style={{ width: `${Math.min(100, (tempoTotalProducao/cargaTotal)*100)}%` }}></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Cards Disponível */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Máquina Disponível</p>
-          <h3 className={`text-4xl font-black ${maquinaDisponivel < 0 ? 'text-red-500' : 'text-emerald-500'}`}>{maquinaDisponivel.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-gray-400 font-bold">{maquinaDisponivel < 0 ? 'Capacidade excedida!' : 'Saldo positivo'}</p>
-        </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Montagem Disponível</p>
-          <h3 className={`text-4xl font-black ${montagemDisponivel < 0 ? 'text-red-500' : 'text-emerald-500'}`}>{montagemDisponivel.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-gray-400 font-bold">{montagemDisponivel < 0 ? 'Capacidade excedida!' : 'Saldo positivo'}</p>
-        </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Carga Total Disponível</p>
-          <h3 className={`text-4xl font-black ${cargaTotalDisponivel < 0 ? 'text-red-500' : 'text-emerald-500'}`}>{cargaTotalDisponivel.toFixed(2)}h</h3>
-          <p className="text-xs mt-2 text-gray-400 font-bold">{cargaTotalDisponivel < 0 ? 'Capacidade excedida!' : 'Saldo positivo'}</p>
-        </div>
-      </div>
+      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+        <BarChart3 className="text-blue-600" /> Dashboard - Detalhamento por Máquina
+      </h2>
 
       {/* Detalhamento por Máquina */}
-      <div className="mt-8">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Detalhamento por Máquina</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {Object.entries(resumoPorMaquina).map(([maquina, dados]) => (
-            <div key={maquina} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-              <h4 className="text-xl font-black text-blue-900 mb-4 flex justify-between items-center">
-                {maquina} <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full">{dados.pedidos.length} pedidos</span>
-              </h4>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-xs font-bold mb-1">
-                    <span className="text-gray-400 uppercase">Hora Máquina</span>
-                    <span className="text-blue-600">{dados.horaMaquina.toFixed(2)}h</span>
-                  </div>
-                  <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden border border-gray-100">
-                    <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (dados.horaMaquina / dados.capacidade) * 100)}%` }}></div>
-                  </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {Object.entries(resumoPorMaquina).map(([maquina, dados]) => (
+          <div key={maquina} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <h4 className="text-xl font-black text-blue-900 mb-4 flex justify-between items-center">
+              {maquina} <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full">{dados.pedidos.length} pedidos</span>
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-gray-400 uppercase">Hora Máquina</span>
+                  <span className="text-blue-600">{dados.horaMaquina.toFixed(2)}h</span>
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs font-bold mb-1">
-                    <span className="text-gray-400 uppercase">Hora Montagem</span>
-                    <span className="text-amber-600">{dados.horaMontagem.toFixed(2)}h</span>
-                  </div>
-                  <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden border border-gray-100">
-                    <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (dados.horaMontagem / dados.capacidade) * 100)}%` }}></div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <div className="bg-gray-50 p-3 rounded-2xl text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Total Usado</p>
-                    <p className="text-lg font-black text-purple-900">{dados.usadas.toFixed(1)}h</p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-2xl text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Saldo</p>
-                    <p className={`text-lg font-black ${dados.saldo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{dados.saldo.toFixed(1)}h</p>
-                  </div>
+                <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden border border-gray-100">
+                  <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (dados.horaMaquina / dados.capacidade) * 100)}%` }}></div>
                 </div>
               </div>
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-gray-400 uppercase">Hora Montagem</span>
+                  <span className="text-amber-600">{dados.horaMontagem.toFixed(2)}h</span>
+                </div>
+                <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden border border-gray-100">
+                  <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (dados.horaMontagem / dados.capacidade) * 100)}%` }}></div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <div className="bg-gray-50 p-3 rounded-2xl text-center">
+                  <p className="text-[10px] font-black text-gray-400 uppercase">Total Usado</p>
+                  <p className="text-lg font-black text-purple-900">{dados.usadas.toFixed(1)}h</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-2xl text-center">
+                  <p className="text-[10px] font-black text-gray-400 uppercase">Saldo</p>
+                  <p className={`text-lg font-black ${dados.saldo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{dados.saldo.toFixed(1)}h</p>
+                </div>
+              </div>
+              <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
+                <p className="text-[10px] font-black text-blue-400 uppercase">Capacidade</p>
+                <p className="text-lg font-black text-blue-900">{dados.capacidade.toFixed(0)}h</p>
+              </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -375,6 +718,7 @@ const App = () => {
   const configInicial = carregarConfig();
   const [metrosPorHora, setMetrosPorHora] = useState(configInicial.metrosPorHora);
   const [metrosPorHoraColadas, setMetrosPorHoraColadas] = useState(configInicial.metrosPorHoraColadas);
+  const [estoque, setEstoque] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingPedido, setEditingPedido] = useState(null);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -407,13 +751,20 @@ const App = () => {
     diasSugeridos: '',
     horaMaquina: '',
     horaMontagem: '',
-    tempoTotalProducao: ''
+    tempoTotalProducao: '',
+    materiais: [] // Array de {materialId, materialNome, quantidade}
   });
 
-  // Carregar pedidos do localStorage na inicialização
+  // Estado para gerenciar materiais no formulário
+  const [materiaisForm, setMateriaisForm] = useState([]);
+
+  // Carregar pedidos e estoque do localStorage na inicialização
   useEffect(() => {
     const pedidosCarregados = carregarPedidos();
     setPedidos(pedidosCarregados);
+    
+    const estoqueCarregado = carregarEstoque();
+    setEstoque(estoqueCarregado);
   }, []);
 
   // Salvar configurações quando mudarem
@@ -439,82 +790,114 @@ const App = () => {
     return () => clearTimeout(timer);
   }, [formData.cep, formData.tipoEntrega]);
 
+  useEffect(() => {
+    if (!formData.totalMetros || !formData.dataEntrada) return;
 
-useEffect(() => {
-  if (!formData.totalMetros || !formData.dataEntrada) return;
+    const metros = Number(formData.totalMetros) || 0;
+    const maquinaRaw = (formData.maquina || '').trim();
+    const maquina = maquinaRaw.toUpperCase();
 
-  const metros = Number(formData.totalMetros) || 0;
-  const maquinaRaw = (formData.maquina || '').trim();
-  const maquina = maquinaRaw.toUpperCase();
+    const PRODUCAO_NORMAL = {
+      TP40: metrosPorHora.TP40,
+      TP25: metrosPorHora.TP25,
+      FORRO: metrosPorHora.FORRO,
+    };
 
-  const PRODUCAO_NORMAL = {
-    TP40: metrosPorHora.TP40,
-    TP25: metrosPorHora.TP25,
-    FORRO: metrosPorHora.FORRO,
-  };
+    const PRODUCAO_COLADA = {
+      TP40: metrosPorHoraColadas.TP40,
+      TP25: metrosPorHoraColadas.TP25,
+      FORRO: metrosPorHoraColadas.FORRO,
+    };
 
-  const PRODUCAO_COLADA = {
-    TP40: metrosPorHoraColadas.TP40,
-    TP25: metrosPorHoraColadas.TP25,
-    FORRO: metrosPorHoraColadas.FORRO,
-  };
+    const isColada = maquina.startsWith("COLADA");
+    const maquinaBase = isColada ? maquina.replace("COLADA ", "") : maquina;
 
-  const isColada = maquina.startsWith("COLADA");
-  const maquinaBase = isColada ? maquina.replace("COLADA ", "") : maquina;
+    const taxa = isColada
+      ? PRODUCAO_COLADA[maquinaBase]
+      : PRODUCAO_NORMAL[maquinaBase];
 
-  const taxa = isColada
-    ? PRODUCAO_COLADA[maquinaBase]
-    : PRODUCAO_NORMAL[maquinaBase];
+    if (!taxa) return;
 
-  if (!taxa) return;
+    const horaMaquina = metros / taxa;
+    const horaMontagem = isColada ? 15 : 0;
 
-  const horaMaquina = metros / taxa;
-  const horaMontagem = isColada ? 15 : 0; // ✅ 5 dias fixos
+    const tempoTotal = horaMaquina + horaMontagem;
 
-  const tempoTotal = horaMaquina + horaMontagem;
+    const horasFila = pedidos.reduce((acc, p) => {
+      const pMaquina = (p.maquina || '').toUpperCase();
+      if (pMaquina === maquina) {
+        return acc + (Number(p.tempoTotalProducao) || 0);
+      }
+      return acc;
+    }, 0);
 
-  const horasFila = pedidos.reduce((acc, p) => {
-    const pMaquina = (p.maquina || '').toUpperCase();
-    if (pMaquina === maquina) {
-      return acc + (Number(p.tempoTotalProducao) || 0);
+    const diasProducao = Math.ceil((tempoTotal + horasFila) / HORAS_DIA);
+
+    const { dataSugerida } = calcularDataSugerida(formData.dataEntrada, diasProducao);
+
+    setFormData(prev => ({
+      ...prev,
+      horaMaquina: horaMaquina.toFixed(2),
+      horaMontagem: horaMontagem.toFixed(2),
+      tempoTotalProducao: tempoTotal.toFixed(2),
+      diasSugeridos: diasProducao.toString(),
+      dataPrevistaProducao: dataSugerida
+    }));
+  }, [
+    formData.totalMetros,
+    formData.dataEntrada,
+    formData.maquina,
+    pedidos,
+    metrosPorHora,
+    metrosPorHoraColadas
+  ]);
+
+  const adicionarMaterial = () => {
+    if (estoque.length === 0) {
+      return alert('Cadastre materiais no estoque primeiro!');
     }
-    return acc;
-  }, 0);
+    setMateriaisForm([...materiaisForm, { materialId: '', materialNome: '', quantidade: '' }]);
+  };
 
-  const diasProducao = Math.ceil((tempoTotal + horasFila) / HORAS_DIA);
+  const removerMaterial = (index) => {
+    setMateriaisForm(materiaisForm.filter((_, i) => i !== index));
+  };
 
-  const { dataSugerida } = calcularDataSugerida(formData.dataEntrada, diasProducao);
-
-  setFormData(prev => ({
-    ...prev,
-    horaMaquina: horaMaquina.toFixed(2),
-    horaMontagem: horaMontagem.toFixed(2),
-    tempoTotalProducao: tempoTotal.toFixed(2),
-    diasSugeridos: diasProducao.toString(),
-    dataPrevistaProducao: dataSugerida
-  }));
-}, [
-  formData.totalMetros,
-  formData.dataEntrada,
-  formData.maquina,
-  pedidos,
-  metrosPorHora,
-  metrosPorHoraColadas
-]);
-
-
-
+  const atualizarMaterial = (index, campo, valor) => {
+    const novos = [...materiaisForm];
+    if (campo === 'materialId') {
+      const material = estoque.find(e => e.id === valor);
+      novos[index] = {
+        ...novos[index],
+        materialId: valor,
+        materialNome: material ? material.material : ''
+      };
+    } else {
+      novos[index][campo] = valor;
+    }
+    setMateriaisForm(novos);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.pedido || !formData.cliente || !formData.totalMetros) return alert('Preencha os campos obrigatórios.');
+    if (!formData.pedido || !formData.cliente || !formData.totalMetros) {
+      return alert('Preencha os campos obrigatórios.');
+    }
+
+    // Validar materiais
+    const materiaisValidos = materiaisForm.filter(m => m.materialId && m.quantidade);
 
     let novosPedidos;
+    const dadosPedido = {
+      ...formData,
+      materiais: materiaisValidos
+    };
+
     if (editingPedido) {
-      novosPedidos = pedidos.map(p => p.id === editingPedido.id ? { ...formData, id: editingPedido.id } : p);
+      novosPedidos = pedidos.map(p => p.id === editingPedido.id ? { ...dadosPedido, id: editingPedido.id } : p);
     } else {
       const novoPedido = { 
-        ...formData, 
+        ...dadosPedido, 
         id: Date.now().toString(),
         createdAt: new Date().toISOString() 
       };
@@ -572,6 +955,7 @@ useEffect(() => {
       pedidos, 
       metrosPorHora,
       metrosPorHoraColadas,
+      estoque,
       exportDate: new Date().toISOString() 
     };
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {type: 'application/json'});
@@ -591,7 +975,6 @@ useEffect(() => {
         try {
           const dados = JSON.parse(event.target.result);
           if (dados.pedidos && Array.isArray(dados.pedidos)) {
-            // Adicionar IDs se não existirem
             const pedidosComId = dados.pedidos.map(p => ({
               ...p,
               id: p.id || Date.now().toString() + Math.random()
@@ -601,6 +984,10 @@ useEffect(() => {
           }
           if (dados.metrosPorHora) setMetrosPorHora(dados.metrosPorHora);
           if (dados.metrosPorHoraColadas) setMetrosPorHoraColadas(dados.metrosPorHoraColadas);
+          if (dados.estoque && Array.isArray(dados.estoque)) {
+            setEstoque(dados.estoque);
+            salvarEstoque(dados.estoque);
+          }
           alert('Dados importados com sucesso!');
         } catch (error) {
           alert('Erro ao importar arquivo. Verifique o formato.');
@@ -617,20 +1004,21 @@ useEffect(() => {
       colagem: 'NENHUMA', tipoEps: TIPOS_EPS[0], tipoFrete: TIPOS_FRETE[0],
       tipoEntrega: 'ENTREGA', cep: '', regiao: '', dataEntregaCliente: '',
       dataPrevistaProducao: '', diasSugeridos: '', horaMaquina: '',
-      horaMontagem: '', tempoTotalProducao: ''
+      horaMontagem: '', tempoTotalProducao: '', materiais: []
     });
+    setMateriaisForm([]);
     setEditingPedido(null);
     setShowForm(false);
   };
 
   const handleEdit = (pedido) => {
     setFormData(pedido);
+    setMateriaisForm(pedido.materiais || []);
     setEditingPedido(pedido);
     setShowForm(true);
   };
 
   // Dashboard Stats
-  const totalHorasDisponiveisMes = HORAS_MES_POR_MAQUINA * Object.keys(PRODUCAO_MAQUINAS_PADRAO).length;
   const resumoDashboard = useMemo(() => {
     const porMaquina = {};
     Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => porMaquina[m] = { 
@@ -669,9 +1057,6 @@ useEffect(() => {
     return resultado;
   }, [pedidos]);
 
-  const totalHorasUsadas = pedidos.reduce((acc, p) => acc + Number(p.tempoTotalProducao || 0), 0);
-  const saldoHoras = totalHorasDisponiveisMes - totalHorasUsadas;
-
   const filteredPedidos = useMemo(() => {
     return pedidos.filter(p => {
       const matchCliente = p.cliente.toLowerCase().includes(filters.cliente.toLowerCase());
@@ -699,12 +1084,13 @@ useEffect(() => {
             <div className="bg-white p-2 rounded-xl shadow-inner"><Package className="text-blue-900" size={32} /></div>
             <div>
               <h1 className="text-3xl font-black tracking-tight">MESTRE AÇO SP</h1>
-              <p className="text-blue-200 text-xs font-medium uppercase tracking-widest">Sistema de Logística Local v10.0</p>
+              <p className="text-blue-200 text-xs font-medium uppercase tracking-widest">Sistema de Logística Local v12.0</p>
             </div>
           </div>
-          <nav className="flex bg-blue-800/50 p-1 rounded-xl backdrop-blur-sm">
+          <nav className="flex bg-blue-800/50 p-1 rounded-xl backdrop-blur-sm flex-wrap">
             <button onClick={() => setActiveTab('pedidos')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'pedidos' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Pedidos</span></button>
             <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><BarChart3 size={18} /> <span className="font-bold">Dashboard</span></button>
+            <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Estoque</span></button>
             <button onClick={() => setActiveTab('regioes')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'regioes' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><MapPin size={18} /> <span className="font-bold">Regiões</span></button>
             <button onClick={() => setActiveTab('config')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'config' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><SettingsIcon size={18} /> <span className="font-bold">Config</span></button>
           </nav>
@@ -759,63 +1145,126 @@ useEffect(() => {
                   <h3 className="text-xl font-black text-blue-900">{editingPedido ? '📝 Editar Pedido' : '🆕 Novo Pedido'}</h3>
                   <button onClick={resetForm} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={24} className="text-gray-400" /></button>
                 </div>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Data Entrada</label><input type="date" value={formData.dataEntrada} onChange={(e) => setFormData({ ...formData, dataEntrada: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
-                  <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Nº Pedido *</label><input type="text" required value={formData.pedido} onChange={(e) => setFormData({ ...formData, pedido: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Ex: 12345" /></div>
-                  <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Cliente *</label><input type="text" required value={formData.cliente} onChange={(e) => setFormData({ ...formData, cliente: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Nome do cliente" /></div>
-                  
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Vendedor</label>
-                    <select value={formData.vendedor} onChange={(e) => setFormData({ ...formData, vendedor: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
-                      {VENDEDORES.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'ENTREGA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
-                      <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
-                    </div>
-                  </div>
-
-                  {formData.tipoEntrega === 'ENTREGA' && (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Dados Básicos */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Data Entrada</label><input type="date" value={formData.dataEntrada} onChange={(e) => setFormData({ ...formData, dataEntrada: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Nº Pedido *</label><input type="text" required value={formData.pedido} onChange={(e) => setFormData({ ...formData, pedido: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Ex: 12345" /></div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Cliente *</label><input type="text" required value={formData.cliente} onChange={(e) => setFormData({ ...formData, cliente: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Nome do cliente" /></div>
+                    
                     <div className="space-y-1">
-                      <div className="flex justify-between items-center ml-1">
-                        <label className="text-xs font-bold text-gray-500 uppercase">CEP</label>
-                        {formData.regiao && (
-                          <span className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-md animate-pulse">
-                            {formData.regiao}
-                          </span>
-                        )}
-                      </div>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          value={formData.cep} 
-                          onChange={(e) => setFormData({ ...formData, cep: e.target.value })} 
-                          className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-                          placeholder="00000-000" 
-                        />
-                        {loadingCep && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-                          </div>
-                        )}
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Vendedor</label>
+                      <select value={formData.vendedor} onChange={(e) => setFormData({ ...formData, vendedor: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
+                        {VENDEDORES.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'ENTREGA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
+                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
                       </div>
                     </div>
-                  )}
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Máquina / Processo</label>
-                    <select value={formData.maquina} onChange={(e) => setFormData({ ...formData, maquina: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
-                      {MAQUINAS.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    {formData.tipoEntrega === 'ENTREGA' && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center ml-1">
+                          <label className="text-xs font-bold text-gray-500 uppercase">CEP</label>
+                          {formData.regiao && (
+                            <span className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-md animate-pulse">
+                              {formData.regiao}
+                            </span>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <input 
+                            type="text" 
+                            value={formData.cep} 
+                            onChange={(e) => setFormData({ ...formData, cep: e.target.value })} 
+                            className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                            placeholder="00000-000" 
+                          />
+                          {loadingCep && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Máquina / Processo</label>
+                      <select value={formData.maquina} onChange={(e) => setFormData({ ...formData, maquina: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
+                        {MAQUINAS.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Total Metros *</label><input type="number" step="0.01" required value={formData.totalMetros} onChange={(e) => setFormData({ ...formData, totalMetros: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="0.00" /></div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Data Sugerida</label><input type="date" disabled value={formData.dataPrevistaProducao || ''} className="w-full bg-blue-50 border-blue-200 border rounded-xl px-4 py-2.5 font-bold text-blue-700" /></div>
                   </div>
-                  <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Total Metros *</label><input type="number" step="0.01" required value={formData.totalMetros} onChange={(e) => setFormData({ ...formData, totalMetros: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="0.00" /></div>
-                  <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Data Sugerida</label><input type="date" disabled value={formData.dataPrevistaProducao || ''} className="w-full bg-blue-50 border-blue-200 border rounded-xl px-4 py-2.5 font-bold text-blue-700" /></div>
+
+                  {/* Seção de Materiais */}
+                  <div className="border-t pt-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-lg font-bold text-purple-900">📦 Consumo de Materiais (PIR/EPS)</h4>
+                      <button 
+                        type="button"
+                        onClick={adicionarMaterial}
+                        className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-bold text-sm"
+                      >
+                        <Plus size={16} /> Adicionar Material
+                      </button>
+                    </div>
+
+                    {materiaisForm.length === 0 ? (
+                      <div className="bg-purple-50 border-2 border-dashed border-purple-200 rounded-xl p-8 text-center">
+                        <Package size={48} className="mx-auto mb-2 text-purple-300" />
+                        <p className="text-purple-600 font-bold">Nenhum material adicionado</p>
+                        <p className="text-purple-500 text-sm">Clique em "Adicionar Material" para incluir consumo de estoque</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {materiaisForm.map((mat, index) => (
+                          <div key={index} className="flex gap-3 items-end bg-purple-50 p-4 rounded-xl border border-purple-100">
+                            <div className="flex-1 space-y-1">
+                              <label className="text-xs font-bold text-purple-600 uppercase ml-1">Material</label>
+                              <select 
+                                value={mat.materialId}
+                                onChange={(e) => atualizarMaterial(index, 'materialId', e.target.value)}
+                                className="w-full border-purple-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none bg-white font-bold text-purple-900"
+                              >
+                                <option value="">Selecione...</option>
+                                {estoque.map(e => (
+                                  <option key={e.id} value={e.id}>{e.material}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-48 space-y-1">
+                              <label className="text-xs font-bold text-purple-600 uppercase ml-1">Quantidade (m²)</label>
+                              <input 
+                                type="number"
+                                step="0.01"
+                                value={mat.quantidade}
+                                onChange={(e) => atualizarMaterial(index, 'quantidade', e.target.value)}
+                                className="w-full border-purple-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none"
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removerMaterial(index)}
+                              className="p-2.5 text-red-600 hover:bg-red-100 rounded-xl transition-colors"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   
-                  <div className="md:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
                     <div className="text-center"><p className="text-[10px] font-bold text-gray-400 uppercase">Hora Máquina</p><p className="text-lg font-black text-blue-900">{formData.horaMaquina || '0.00'}h</p></div>
                     <div className="text-center">
                       <p className="text-[10px] font-bold text-gray-400 uppercase">Hora Montagem {formData.maquina?.startsWith('Colada') && <span className="text-amber-600"></span>}</p>
@@ -832,7 +1281,7 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  <div className="md:col-span-3 flex justify-end gap-3 mt-4 pt-4 border-t">
+                  <div className="flex justify-end gap-3 pt-4 border-t">
                     <button type="button" onClick={resetForm} className="px-6 py-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-bold text-gray-600">Cancelar</button>
                     <button type="submit" className="flex items-center gap-2 bg-blue-900 text-white px-8 py-2.5 rounded-xl hover:bg-blue-800 transition-colors shadow-lg font-bold"><Save size={20} /> Salvar</button>
                   </div>
@@ -888,6 +1337,7 @@ useEffect(() => {
                       <th className="px-4 py-4 font-bold text-gray-600">Vendedor</th>
                       <th className="px-4 py-4 font-bold text-gray-600">Máquina</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-right">Metros</th>
+                      <th className="px-4 py-4 font-bold text-gray-600 text-center">Materiais</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-right">Prazo</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-right">Data Sug.</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-center">Ações</th>
@@ -896,7 +1346,7 @@ useEffect(() => {
                   <tbody className="divide-y divide-gray-50">
                     {filteredPedidos.length === 0 ? (
                       <tr>
-                        <td colSpan="10" className="text-center py-12">
+                        <td colSpan="11" className="text-center py-12">
                           <div className="flex flex-col items-center text-gray-400">
                             <Package size={48} className="mb-2 opacity-20" />
                             <p className="text-lg">Nenhum pedido registrado</p>
@@ -925,6 +1375,15 @@ useEffect(() => {
                             </span>
                           </td>
                           <td className="px-4 py-4 text-right font-bold">{parseFloat(p.totalMetros).toFixed(2)}m</td>
+                          <td className="px-4 py-4 text-center">
+                            {p.materiais && p.materiais.length > 0 ? (
+                              <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs font-bold">
+                                {p.materiais.length} item{p.materiais.length > 1 ? 's' : ''}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-4 text-right font-black text-green-700">{parseFloat(p.diasSugeridos || 0).toFixed(1)}d</td>
                           <td className="px-4 py-4 text-right font-bold text-green-700 text-xs">{formatarDataBR(p.dataPrevistaProducao)}</td>
                           <td className="px-4 py-4">
@@ -944,7 +1403,11 @@ useEffect(() => {
         )}
 
         {activeTab === 'dashboard' && (
-          <Dashboard resumoPorMaquina={resumoDashboard} totalHorasDisponiveis={totalHorasDisponiveisMes} totalHorasUsadas={totalHorasUsadas} saldoHoras={saldoHoras} />
+          <Dashboard resumoPorMaquina={resumoDashboard} />
+        )}
+
+        {activeTab === 'estoque' && (
+          <GerenciadorEstoque estoque={estoque} setEstoque={setEstoque} pedidos={pedidos} />
         )}
 
         {activeTab === 'regioes' && <RelatorioRegioes pedidos={pedidos} />}
@@ -952,7 +1415,7 @@ useEffect(() => {
       </main>
 
       <footer className="max-w-7xl mx-auto p-6 text-center text-gray-400 text-xs font-medium uppercase tracking-widest">
-        &copy; {new Date().getFullYear()} Mestre Aço SP - Sistema de Logística Local v10.0
+        &copy; {new Date().getFullYear()} Mestre Aço SP - Sistema de Logística Local v12.0
       </footer>
     </div>
   );
