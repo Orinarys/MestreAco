@@ -28,6 +28,7 @@ const VENDEDORES = [
 const TIPOS_TELHAS = ['SANDUICHE', 'SIMPLES', 'FORRO'];
 const TIPOS_EPS = ['30MM', '50MM', 'PIR30MM', 'PIR50MM'];
 const TIPOS_FRETE = ['CIF', 'FOB'];
+const TIPOS_PINTURA = ['SEM PINTURA', 'PRÉ PINTADA', 'PÓS PINTADA'];
 
 const HORAS_DIA = 8; // 8 horas por dia conforme Excel
 const BUFFER_PRAZO_FIXO = 0; // Buffer FIXO de 5 dias (igual ao Excel: =C11+5)
@@ -796,16 +797,59 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
   </div>
 );
 
-const Dashboard = ({ resumoPorMaquina }) => {
+const Dashboard = ({ resumo }) => {
+  const { porMaquina, porPintura } = resumo;
+  const totalPedidos = Object.values(porPintura).reduce((a, b) => a + b, 0);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-        <BarChart3 className="text-blue-600" /> Dashboard - Detalhamento por Máquina
-      </h2>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <BarChart3 className="text-blue-600" /> Dashboard de Produção
+        </h2>
+      </div>
+
+      {/* Gráfico de Pintura */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-blue-900 mb-6 flex items-center gap-2">
+          <Package size={20} className="text-blue-600" /> Distribuição por Tipo de Pintura
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {Object.entries(porPintura).map(([tipo, qtd]) => {
+            const porcentagem = totalPedidos > 0 ? (qtd / totalPedidos) * 100 : 0;
+            const cores = {
+              'SEM PINTURA': 'bg-gray-400',
+              'PRÉ PINTADA': 'bg-blue-500',
+              'PÓS PINTADA': 'bg-purple-500'
+            };
+            return (
+              <div key={tipo} className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{tipo}</p>
+                    <p className="text-2xl font-black text-blue-900">{qtd} <span className="text-sm font-bold text-gray-400">pedidos</span></p>
+                  </div>
+                  <span className="text-sm font-black text-blue-600">{porcentagem.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-gray-50 h-3 rounded-full overflow-hidden border border-gray-100">
+                  <div 
+                    className={`${cores[tipo] || 'bg-blue-500'} h-full transition-all duration-1000`} 
+                    style={{ width: `${porcentagem}%` }}
+                  ></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <h3 className="text-lg font-bold text-blue-900 mt-8 mb-2 flex items-center gap-2">
+        <SettingsIcon size={20} className="text-blue-600" /> Detalhamento por Máquina
+      </h3>
 
       {/* Detalhamento por Máquina */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {Object.entries(resumoPorMaquina).map(([maquina, dados]) => (
+        {Object.entries(porMaquina).map(([maquina, dados]) => (
           <div key={maquina} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h4 className="text-xl font-black text-blue-900 mb-4 flex justify-between items-center">
               {maquina} <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full">{dados.pedidos.length} pedidos</span>
@@ -904,6 +948,7 @@ const App = () => {
     colagem: 'NENHUMA',
     tipoEps: TIPOS_EPS[0],
     tipoFrete: TIPOS_FRETE[0],
+    tipoPintura: TIPOS_PINTURA[0],
     tipoEntrega: 'ENTREGA',
     cep: '',
     regiao: '',
@@ -952,7 +997,7 @@ const App = () => {
   }, [formData.cep, formData.tipoEntrega]);
 
   useEffect(() => {
-    if (!formData.totalMetros || !formData.dataEntrada) return;
+    if (!formData.dataEntrada) return;
 
     const metros = Number(formData.totalMetros) || 0;
     const maquinaRaw = (formData.maquina || '').trim();
@@ -992,7 +1037,12 @@ const App = () => {
       return acc;
     }, 0);
 
-    const diasProducao = Math.ceil((tempoTotal + horasFila) / HORAS_DIA);
+    let diasProducao = Math.ceil((tempoTotal + horasFila) / HORAS_DIA);
+    
+    // Acréscimo de 5 dias para PÓS PINTADA
+    if (formData.tipoPintura === 'PÓS PINTADA') {
+      diasProducao += 5;
+    }
 
     const { dataSugerida } = calcularDataSugerida(formData.dataEntrada, diasProducao);
 
@@ -1008,6 +1058,7 @@ const App = () => {
     formData.totalMetros,
     formData.dataEntrada,
     formData.maquina,
+    formData.tipoPintura,
     pedidos,
     metrosPorHora,
     metrosPorHoraColadas
@@ -1163,6 +1214,7 @@ const App = () => {
       dataEntrada: hojeISO(), pedido: '', cliente: '', vendedor: VENDEDORES[0],
       tipoTelha: TIPOS_TELHAS[0], totalMetros: '', maquina: MAQUINAS[0],
       colagem: 'NENHUMA', tipoEps: TIPOS_EPS[0], tipoFrete: TIPOS_FRETE[0],
+      tipoPintura: TIPOS_PINTURA[0],
       tipoEntrega: 'ENTREGA', cep: '', regiao: '', dataEntregaCliente: '',
       dataPrevistaProducao: '', diasSugeridos: '', horaMaquina: '',
       horaMontagem: '', tempoTotalProducao: '', materiais: []
@@ -1189,18 +1241,26 @@ const App = () => {
       pedidos: [] 
     });
     
-    pedidos.forEach(p => {
-      const maquinaBase = p.maquina.replace('Colada ', '');
-      if (porMaquina[maquinaBase]) {
-        const hMaq = parseFloat(p.horaMaquina) || 0;
-        const hMont = parseFloat(p.horaMontagem) || 0;
-        
-        porMaquina[maquinaBase].horaMaquina += hMaq;
-        porMaquina[maquinaBase].horaMontagem += hMont;
-        porMaquina[maquinaBase].horasUsadas += (hMaq + hMont);
-        porMaquina[maquinaBase].pedidos.push(p);
-      }
-    });
+	    const porPintura = {};
+	    TIPOS_PINTURA.forEach(p => porPintura[p] = 0);
+
+	    pedidos.forEach(p => {
+	      const maquinaBase = p.maquina.replace('Colada ', '');
+	      if (porMaquina[maquinaBase]) {
+	        const hMaq = parseFloat(p.horaMaquina) || 0;
+	        const hMont = parseFloat(p.horaMontagem) || 0;
+	        
+	        porMaquina[maquinaBase].horaMaquina += hMaq;
+	        porMaquina[maquinaBase].horaMontagem += hMont;
+	        porMaquina[maquinaBase].horasUsadas += (hMaq + hMont);
+	        porMaquina[maquinaBase].pedidos.push(p);
+	      }
+	      
+	      const pintura = p.tipoPintura || 'SEM PINTURA';
+	      if (porPintura.hasOwnProperty(pintura)) {
+	        porPintura[pintura] += 1;
+	      }
+	    });
     
 const resultado = {};
 Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
@@ -1219,15 +1279,15 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
     horaMaquina: porMaquina[m].horaMaquina,
     horaMontagem: porMaquina[m].horaMontagem,
 
-    // 👇 NOVOS CAMPOS
-    diasTotais,
-    diasDisponiveis,
-    diasUsados
-  };
-});
-
-    return resultado;
-  }, [pedidos]);
+	    // 👇 NOVOS CAMPOS
+	    diasTotais,
+	    diasDisponiveis,
+	    diasUsados
+	  };
+	});
+	
+	    return { porMaquina: resultado, porPintura };
+	  }, [pedidos]);
 
   const filteredPedidos = useMemo(() => {
     return pedidos.filter(p => {
@@ -1333,13 +1393,20 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       </select>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'ENTREGA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
-                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
-                      </div>
-                    </div>
+	                    <div className="space-y-1">
+	                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
+	                      <div className="flex gap-2">
+	                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'ENTREGA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
+	                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
+	                      </div>
+	                    </div>
+
+	                    <div className="space-y-1">
+	                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Pintura</label>
+	                      <select value={formData.tipoPintura} onChange={(e) => setFormData({ ...formData, tipoPintura: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
+	                        {TIPOS_PINTURA.map(p => <option key={p} value={p}>{p}</option>)}
+	                      </select>
+	                    </div>
 
                     {formData.tipoEntrega === 'ENTREGA' && (
                       <div className="space-y-1">
@@ -1451,7 +1518,9 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                     <div className="text-center border-l-2 border-green-300 bg-white/50 backdrop-blur-sm rounded-lg px-2">
                       <p className="text-[10px] font-bold text-green-600 uppercase">Sugestão Prazo</p>
                       <p className="text-2xl font-black text-green-600">{formData.diasSugeridos || '0.00'}</p>
-                      <p className="text-[8px] text-gray-400 font-bold uppercase">dias (total+5 buffer)</p>
+                      <p className="text-[8px] text-gray-400 font-bold uppercase">
+                        dias (total+5 buffer{formData.tipoPintura === 'PÓS PINTADA' ? ' + 5 pintura' : ''})
+                      </p>
                     </div>
                   </div>
 
@@ -1577,7 +1646,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
         )}
 
         {activeTab === 'dashboard' && (
-          <Dashboard resumoPorMaquina={resumoDashboard} />
+          <Dashboard resumo={resumoDashboard} />
         )}
 
         {activeTab === 'estoque' && (
