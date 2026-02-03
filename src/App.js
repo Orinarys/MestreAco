@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Download, Upload, BarChart3, Package, Settings as SettingsIcon, MapPin, Truck, Store, User, AlertTriangle, MinusCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Download, Upload, BarChart3, Package, Settings as SettingsIcon, MapPin, Truck, Store, User, AlertTriangle, MinusCircle, Calendar } from 'lucide-react';
 
 /* ===================== CONFIG PRODUÇÃO ===================== */
 // Taxas de produção para HORA MÁQUINA - TELHAS NORMAIS (metros/hora)
@@ -44,6 +44,146 @@ const ESTOQUE_INICIAL = [
   { id: '7', material: 'PIR TP 40-50MM', estoqueMinimo: 1000, estoqueAtual: 680, ultimaAtualizacao: new Date().toISOString() },
   { id: '8', material: 'PIR TP 25-30MM', estoqueMinimo: 0, estoqueAtual: 48, ultimaAtualizacao: new Date().toISOString(), sobEncomenda: true },
 ];
+
+/* ===================== COMPONENTES DE STATUS ===================== */
+const StatusDiario = ({ pedidos = [] }) => {
+  const [filtroData, setFiltroData] = React.useState(new Date().toISOString().split('T')[0]);
+  const [filtroPrazo, setFiltroPrazo] = React.useState('');
+
+  const dadosFiltrados = React.useMemo(() => {
+    const filtrados = pedidos.filter(p => {
+      const matchData = !filtroData || p.dataEntrada === filtroData;
+      const matchPrazo = !filtroPrazo || p.dataPrevistaProducao === filtroPrazo;
+      return matchData && matchPrazo;
+    });
+    
+    const resumo = {
+      totalPedidos: filtrados.length,
+      clientesUnicos: new Set(filtrados.map(p => p.cliente)).size,
+      vendedoresUnicos: new Set(filtrados.map(p => p.vendedor)).size,
+      pedidos: filtrados
+    };
+
+    return resumo;
+  }, [pedidos, filtroData, filtroPrazo]);
+
+  const formatarDataBR = (iso) => {
+    if (!iso) return '';
+    const [a, m, d] = iso.split('-');
+    return `${d}/${m}/${a}`;
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <Calendar className="text-blue-600" /> Status Diário
+        </h2>
+        
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 w-full md:w-auto">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Data Entrada</label>
+            <input 
+              type="date" 
+              value={filtroData} 
+              onChange={(e) => setFiltroData(e.target.value)}
+              className="border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-900"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Prazo Produção</label>
+            <input 
+              type="date" 
+              value={filtroPrazo} 
+              onChange={(e) => setFiltroPrazo(e.target.value)}
+              className="border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-green-700"
+            />
+          </div>
+          <button 
+            onClick={() => { setFiltroData(''); setFiltroPrazo(''); }}
+            className="self-end px-4 py-2 text-xs font-bold text-gray-500 hover:text-red-600 transition-colors"
+          >
+            Limpar Filtros
+          </button>
+        </div>
+      </div>
+
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-blue-50 p-3 rounded-xl"><Package className="text-blue-600" size={24} /></div>
+          <div>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Pedidos</p>
+            <p className="text-2xl font-black text-blue-900">{dadosFiltrados.totalPedidos}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-purple-50 p-3 rounded-xl"><User className="text-purple-600" size={24} /></div>
+          <div>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Clientes</p>
+            <p className="text-2xl font-black text-purple-900">{dadosFiltrados.clientesUnicos}</p>
+          </div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-emerald-50 p-3 rounded-xl"><User className="text-emerald-600" size={24} /></div>
+          <div>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Vendedores</p>
+            <p className="text-2xl font-black text-emerald-900">{dadosFiltrados.vendedoresUnicos}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabela de Pedidos */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+            <Package size={20} /> Listagem de Pedidos
+          </h3>
+          <span className="text-xs font-bold text-gray-400 uppercase">{dadosFiltrados.pedidos.length} resultados encontrados</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Nº Pedido</th>
+                <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Vendedor</th>
+                <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Cliente</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Data Entrada</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Prazo Produção</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {dadosFiltrados.pedidos.length > 0 ? (
+                dadosFiltrados.pedidos.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 font-black text-blue-900">{p.pedido}</td>
+                    <td className="px-6 py-4 font-bold text-gray-700">{p.vendedor}</td>
+                    <td className="px-6 py-4 font-medium text-gray-600">{p.cliente}</td>
+                    <td className="px-6 py-4 text-center text-gray-500 font-bold text-xs">
+                      {formatarDataBR(p.dataEntrada)}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-lg font-black text-xs">
+                        {formatarDataBR(p.dataPrevistaProducao)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="5" className="px-6 py-10 text-center text-gray-400 italic">
+                    Nenhum pedido encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ===================== FUNÇÕES AUX ===================== */
 const hojeISO = () => new Date().toISOString().split('T')[0];
@@ -680,6 +820,11 @@ const Dashboard = ({ resumoPorMaquina }) => {
                   <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (dados.horaMaquina / dados.capacidade) * 100)}%` }}></div>
                 </div>
               </div>
+              <p className="text-[11px] text-gray-500 mt-1 text-right">
+  {Math.ceil((dados.horaMaquina || 0) / HORAS_DIA)} dias usados •{" "}
+  {Math.max(0, Math.floor(dados.diasDisponiveis))} dias disponíveis
+</p>
+
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1">
                   <span className="text-gray-400 uppercase">Hora Montagem</span>
@@ -699,6 +844,22 @@ const Dashboard = ({ resumoPorMaquina }) => {
                   <p className={`text-lg font-black ${dados.saldo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{dados.saldo.toFixed(1)}h</p>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+  <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
+    <p className="text-[10px] font-black text-blue-400 uppercase">Dias Totais</p>
+    <p className="text-lg font-black text-blue-900">
+      {dados.diasTotais.toFixed(1)}
+    </p>
+  </div>
+
+  <div className="bg-emerald-50 p-3 rounded-2xl text-center border border-emerald-100">
+    <p className="text-[10px] font-black text-emerald-400 uppercase">Dias Disponíveis</p>
+    <p className={`text-lg font-black ${dados.diasDisponiveis < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+      {dados.diasDisponiveis.toFixed(1)}
+    </p>
+  </div>
+</div>
+
               <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
                 <p className="text-[10px] font-black text-blue-400 uppercase">Capacidade</p>
                 <p className="text-lg font-black text-blue-900">{dados.capacidade.toFixed(0)}h</p>
@@ -713,7 +874,7 @@ const Dashboard = ({ resumoPorMaquina }) => {
 
 /* ===================== APP PRINCIPAL ===================== */
 const App = () => {
-  const [activeTab, setActiveTab] = useState('pedidos');
+  const [activeTab, setActiveTab] = useState('status-diario');
   const [pedidos, setPedidos] = useState([]);
   const configInicial = carregarConfig();
   const [metrosPorHora, setMetrosPorHora] = useState(configInicial.metrosPorHora);
@@ -1041,19 +1202,30 @@ const App = () => {
       }
     });
     
-    const resultado = {};
-    Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
-      const capacidade = HORAS_MES_POR_MAQUINA;
-      const usadas = porMaquina[m].horasUsadas;
-      resultado[m] = { 
-        capacidade, 
-        usadas, 
-        saldo: capacidade - usadas, 
-        pedidos: porMaquina[m].pedidos,
-        horaMaquina: porMaquina[m].horaMaquina,
-        horaMontagem: porMaquina[m].horaMontagem
-      };
-    });
+const resultado = {};
+Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
+  const capacidadeHoras = HORAS_MES_POR_MAQUINA; // ex: 800h/mês
+  const usadasHoras = porMaquina[m].horasUsadas;
+
+  const diasTotais = capacidadeHoras / HORAS_DIA;     // ex: 800 / 8 = 100 dias
+  const diasUsados = usadasHoras / HORAS_DIA;
+  const diasDisponiveis = diasTotais - diasUsados;
+
+  resultado[m] = { 
+    capacidade: capacidadeHoras, 
+    usadas: usadasHoras, 
+    saldo: capacidadeHoras - usadasHoras, 
+    pedidos: porMaquina[m].pedidos,
+    horaMaquina: porMaquina[m].horaMaquina,
+    horaMontagem: porMaquina[m].horaMontagem,
+
+    // 👇 NOVOS CAMPOS
+    diasTotais,
+    diasDisponiveis,
+    diasUsados
+  };
+});
+
     return resultado;
   }, [pedidos]);
 
@@ -1088,6 +1260,7 @@ const App = () => {
             </div>
           </div>
           <nav className="flex bg-blue-800/50 p-1 rounded-xl backdrop-blur-sm flex-wrap">
+            <button onClick={() => setActiveTab('status-diario')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'status-diario' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><BarChart3 size={18} /> <span className="font-bold">Status Diário</span></button>
             <button onClick={() => setActiveTab('pedidos')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'pedidos' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Pedidos</span></button>
             <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><BarChart3 size={18} /> <span className="font-bold">Dashboard</span></button>
             <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Estoque</span></button>
@@ -1098,6 +1271,7 @@ const App = () => {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 md:p-6">
+        {activeTab === 'status-diario' && <StatusDiario pedidos={pedidos} />}
         {activeTab === 'pedidos' && (
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* Toolbar */}
