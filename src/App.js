@@ -1041,7 +1041,7 @@ const App = () => {
     
     // Acréscimo de 5 dias para PÓS PINTADA
     if (formData.tipoPintura === 'PÓS PINTADA') {
-      diasProducao += 5;
+      diasProducao += 15;
     }
 
     const { dataSugerida } = calcularDataSugerida(formData.dataEntrada, diasProducao);
