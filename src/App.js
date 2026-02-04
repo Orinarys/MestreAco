@@ -1519,7 +1519,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       <p className="text-[10px] font-bold text-green-600 uppercase">Sugestão Prazo</p>
                       <p className="text-2xl font-black text-green-600">{formData.diasSugeridos || '0.00'}</p>
                       <p className="text-[8px] text-gray-400 font-bold uppercase">
-                        dias (total+5 buffer{formData.tipoPintura === 'PÓS PINTADA' ? ' + 5 pintura' : ''})
+                        dias (total+5 buffer{formData.tipoPintura === 'PÓS PINTADA' ? ' + 15 pintura' : ''})
                       </p>
                     </div>
                   </div>
