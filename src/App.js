@@ -29,6 +29,8 @@ const TIPOS_TELHAS = ['SANDUICHE', 'SIMPLES', 'FORRO'];
 const TIPOS_EPS = ['30MM', '50MM', 'PIR30MM', 'PIR50MM'];
 const TIPOS_FRETE = ['CIF', 'FOB'];
 const TIPOS_PINTURA = ['SEM PINTURA', 'PRÉ PINTADA', 'PÓS PINTADA'];
+const STATUS_PEDIDO = ['AGUARDANDO RETIRADA', 'FINALIZADO', 'FATURADO'];
+
 
 const HORAS_DIA = 8; // 8 horas por dia conforme Excel
 const BUFFER_PRAZO_FIXO = 0; // Buffer FIXO de 5 dias (igual ao Excel: =C11+5)
@@ -57,7 +59,7 @@ const StatusDiario = ({ pedidos = [] }) => {
       const matchPrazo = !filtroPrazo || p.dataPrevistaProducao === filtroPrazo;
       return matchData && matchPrazo;
     });
-    
+
     const resumo = {
       totalPedidos: filtrados.length,
       clientesUnicos: new Set(filtrados.map(p => p.cliente)).size,
@@ -80,28 +82,28 @@ const StatusDiario = ({ pedidos = [] }) => {
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <Calendar className="text-blue-600" /> Status Diário
         </h2>
-        
+
         {/* Filtros */}
         <div className="flex flex-wrap gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100 w-full md:w-auto">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Data Entrada</label>
-            <input 
-              type="date" 
-              value={filtroData} 
+            <input
+              type="date"
+              value={filtroData}
               onChange={(e) => setFiltroData(e.target.value)}
               className="border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-900"
             />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Prazo Produção</label>
-            <input 
-              type="date" 
-              value={filtroPrazo} 
+            <input
+              type="date"
+              value={filtroPrazo}
               onChange={(e) => setFiltroPrazo(e.target.value)}
               className="border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-green-700"
             />
           </div>
-          <button 
+          <button
             onClick={() => { setFiltroData(''); setFiltroPrazo(''); }}
             className="self-end px-4 py-2 text-xs font-bold text-gray-500 hover:text-red-600 transition-colors"
           >
@@ -113,7 +115,10 @@ const StatusDiario = ({ pedidos = [] }) => {
       {/* Cards de Resumo */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-          <div className="bg-blue-50 p-3 rounded-xl"><Package className="text-blue-600" size={24} /></div>
+          <div className="bg-[#192d38] p-3 rounded-xl">
+            <Package className="text-white" size={24} />
+          </div>
+
           <div>
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Pedidos</p>
             <p className="text-2xl font-black text-blue-900">{dadosFiltrados.totalPedidos}</p>
@@ -150,6 +155,7 @@ const StatusDiario = ({ pedidos = [] }) => {
                 <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Nº Pedido</th>
                 <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Vendedor</th>
                 <th className="px-6 py-4 text-left font-bold text-gray-600 uppercase tracking-wider">Cliente</th>
+                <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Data Entrada</th>
                 <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Prazo Produção</th>
               </tr>
@@ -161,6 +167,18 @@ const StatusDiario = ({ pedidos = [] }) => {
                     <td className="px-6 py-4 font-black text-blue-900">{p.pedido}</td>
                     <td className="px-6 py-4 font-bold text-gray-700">{p.vendedor}</td>
                     <td className="px-6 py-4 font-medium text-gray-600">{p.cliente}</td>
+
+                    {/* STATUS */}
+                    <td className="px-6 py-4 text-center">
+                      <span className={`px-3 py-1 rounded-lg text-xs font-black
+            ${p.status === 'FATURADO' ? 'bg-emerald-100 text-emerald-700' :
+                          p.status === 'FINALIZADO' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'}
+          `}>
+                        {p.status}
+                      </span>
+                    </td>
+
                     <td className="px-6 py-4 text-center text-gray-500 font-bold text-xs">
                       {formatarDataBR(p.dataEntrada)}
                     </td>
@@ -173,12 +191,13 @@ const StatusDiario = ({ pedidos = [] }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="px-6 py-10 text-center text-gray-400 italic">
+                  <td colSpan="6" className="px-6 py-10 text-center text-gray-400 italic">
                     Nenhum pedido encontrado para os filtros selecionados.
                   </td>
                 </tr>
               )}
             </tbody>
+
           </table>
         </div>
       </div>
@@ -191,10 +210,10 @@ const hojeISO = () => new Date().toISOString().split('T')[0];
 
 const calcularDataSugerida = (dataEntradaISO, diasSugeridos) => {
   if (!dataEntradaISO || !diasSugeridos) return { dataSugerida: hojeISO() };
-  
+
   const data = new Date(dataEntradaISO + 'T12:00:00');
   data.setDate(data.getDate() + Math.floor(diasSugeridos));
-  
+
   return {
     dataSugerida: data.toISOString().split('T')[0]
   };
@@ -209,9 +228,9 @@ const formatarDataBR = (iso) => {
 const formatarDataHoraBR = (isoString) => {
   if (!isoString) return '';
   const data = new Date(isoString);
-  return data.toLocaleString('pt-BR', { 
-    day: '2-digit', 
-    month: '2-digit', 
+  return data.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -323,23 +342,23 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
   const handleSubmitEstoque = (e) => {
     e.preventDefault();
-    
+
     if (!formEstoque.material || !formEstoque.estoqueAtual) {
       return alert('Preencha os campos obrigatórios');
     }
 
     let novoEstoque;
     if (editandoItem) {
-      novoEstoque = estoque.map(item => 
-        item.id === editandoItem.id 
-          ? { 
-              ...item, 
-              material: formEstoque.material,
-              estoqueMinimo: formEstoque.sobEncomenda ? 0 : parseFloat(formEstoque.estoqueMinimo) || 0,
-              estoqueAtual: parseFloat(formEstoque.estoqueAtual) || 0,
-              sobEncomenda: formEstoque.sobEncomenda,
-              ultimaAtualizacao: new Date().toISOString()
-            }
+      novoEstoque = estoque.map(item =>
+        item.id === editandoItem.id
+          ? {
+            ...item,
+            material: formEstoque.material,
+            estoqueMinimo: formEstoque.sobEncomenda ? 0 : parseFloat(formEstoque.estoqueMinimo) || 0,
+            estoqueAtual: parseFloat(formEstoque.estoqueAtual) || 0,
+            sobEncomenda: formEstoque.sobEncomenda,
+            ultimaAtualizacao: new Date().toISOString()
+          }
           : item
       );
     } else {
@@ -381,7 +400,7 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
   const handleExcluirEstoque = (id) => {
     // Verificar se há pedidos usando este material
-    const pedidosComMaterial = pedidos.filter(p => 
+    const pedidosComMaterial = pedidos.filter(p =>
       p.materiais && p.materiais.some(m => m.materialId === id)
     );
 
@@ -405,7 +424,7 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
   const getNivelEstoque = (item) => {
     if (item.sobEncomenda) return 'sob-encomenda';
     if (item.estoqueMinimo === 0) return 'sem-minimo';
-    
+
     const percentual = (item.estoqueDisponivel / item.estoqueMinimo) * 100;
     if (percentual >= 80) return 'ok';
     if (percentual >= 50) return 'atencao';
@@ -426,9 +445,9 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
     const consumoTotal = estoqueComConsumo.reduce((acc, item) => acc + item.consumoTotal, 0);
 
-    return { 
-      criticos: criticos.length, 
-      atencao: atencao.length, 
+    return {
+      criticos: criticos.length,
+      atencao: atencao.length,
       total: estoque.length,
       consumoTotal
     };
@@ -487,11 +506,11 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
         <form onSubmit={handleSubmitEstoque} className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-500 uppercase ml-1">Material *</label>
-            <input 
+            <input
               type="text"
               required
               value={formEstoque.material}
-              onChange={(e) => setFormEstoque({...formEstoque, material: e.target.value})}
+              onChange={(e) => setFormEstoque({ ...formEstoque, material: e.target.value })}
               className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none"
               placeholder="Ex: EPS TP 40-30mm"
             />
@@ -499,10 +518,10 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-500 uppercase ml-1">Estoque Mínimo (m²)</label>
-            <input 
+            <input
               type="number"
               value={formEstoque.estoqueMinimo}
-              onChange={(e) => setFormEstoque({...formEstoque, estoqueMinimo: e.target.value})}
+              onChange={(e) => setFormEstoque({ ...formEstoque, estoqueMinimo: e.target.value })}
               disabled={formEstoque.sobEncomenda}
               className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="0"
@@ -511,11 +530,11 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-500 uppercase ml-1">Estoque Atual (m²) *</label>
-            <input 
+            <input
               type="number"
               required
               value={formEstoque.estoqueAtual}
-              onChange={(e) => setFormEstoque({...formEstoque, estoqueAtual: e.target.value})}
+              onChange={(e) => setFormEstoque({ ...formEstoque, estoqueAtual: e.target.value })}
               className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none"
               placeholder="0"
             />
@@ -524,10 +543,10 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-500 uppercase ml-1">Sob Encomenda</label>
             <div className="flex items-center gap-2 h-[42px]">
-              <input 
+              <input
                 type="checkbox"
                 checked={formEstoque.sobEncomenda}
-                onChange={(e) => setFormEstoque({...formEstoque, sobEncomenda: e.target.checked, estoqueMinimo: e.target.checked ? '0' : formEstoque.estoqueMinimo})}
+                onChange={(e) => setFormEstoque({ ...formEstoque, sobEncomenda: e.target.checked, estoqueMinimo: e.target.checked ? '0' : formEstoque.estoqueMinimo })}
                 className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
               />
               <span className="text-sm font-bold text-gray-600">Sim</span>
@@ -536,7 +555,7 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
 
           <div className="md:col-span-4 flex justify-end gap-3 pt-4 border-t">
             {editandoItem && (
-              <button 
+              <button
                 type="button"
                 onClick={resetFormEstoque}
                 className="px-6 py-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-bold text-gray-600"
@@ -544,7 +563,7 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
                 Cancelar
               </button>
             )}
-            <button 
+            <button
               type="submit"
               className="flex items-center gap-2 bg-purple-600 text-white px-8 py-2.5 rounded-xl hover:bg-purple-700 transition-colors shadow-md font-bold"
             >
@@ -585,7 +604,7 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
                 estoqueComConsumo.map((item) => {
                   const nivel = getNivelEstoque(item);
                   const complemento = calcularComplemento(item);
-                  
+
                   return (
                     <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
                       <td className="px-6 py-4 font-bold text-purple-900">{item.material}</td>
@@ -641,13 +660,13 @@ const GerenciadorEstoque = ({ estoque, setEstoque, pedidos }) => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
+                          <button
                             onClick={() => handleEditarEstoque(item)}
                             className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
                           >
                             <Edit2 size={18} />
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleExcluirEstoque(item.id)}
                             className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                           >
@@ -731,7 +750,7 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
       <SettingsIcon className="text-blue-600" /> Configurações de Produção
     </h2>
-    
+
     {/* Configuração de Telhas NORMAIS */}
     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
       <h3 className="text-lg font-bold text-blue-900 mb-4">Telhas NORMAIS (metros/hora)</h3>
@@ -744,10 +763,10 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
               <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Telha Normal</p>
             </div>
             <div className="flex items-center gap-3">
-              <input 
-                type="number" 
-                value={valor} 
-                onChange={(e) => setMetrosPorHora({...metrosPorHora, [maquina]: parseFloat(e.target.value) || 0})}
+              <input
+                type="number"
+                value={valor}
+                onChange={(e) => setMetrosPorHora({ ...metrosPorHora, [maquina]: parseFloat(e.target.value) || 0 })}
                 className="w-32 border-gray-200 border rounded-xl px-4 py-2 font-black text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none"
               />
               <span className="text-sm font-bold text-gray-400">m/h</span>
@@ -769,10 +788,10 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
               <p className="text-xs text-amber-600 font-bold uppercase tracking-widest">Com processo de colagem</p>
             </div>
             <div className="flex items-center gap-3">
-              <input 
-                type="number" 
-                value={valor} 
-                onChange={(e) => setMetrosPorHoraColadas({...metrosPorHoraColadas, [tipo]: parseFloat(e.target.value) || 0})}
+              <input
+                type="number"
+                value={valor}
+                onChange={(e) => setMetrosPorHoraColadas({ ...metrosPorHoraColadas, [tipo]: parseFloat(e.target.value) || 0 })}
                 className="w-32 border-amber-300 border rounded-xl px-4 py-2 font-black text-amber-700 focus:ring-2 focus:ring-amber-500 outline-none"
               />
               <span className="text-sm font-bold text-amber-600">m/h</span>
@@ -832,8 +851,8 @@ const Dashboard = ({ resumo }) => {
                   <span className="text-sm font-black text-blue-600">{porcentagem.toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-gray-50 h-3 rounded-full overflow-hidden border border-gray-100">
-                  <div 
-                    className={`${cores[tipo] || 'bg-blue-500'} h-full transition-all duration-1000`} 
+                  <div
+                    className={`${cores[tipo] || 'bg-blue-500'} h-full transition-all duration-1000`}
                     style={{ width: `${porcentagem}%` }}
                   ></div>
                 </div>
@@ -865,9 +884,9 @@ const Dashboard = ({ resumo }) => {
                 </div>
               </div>
               <p className="text-[11px] text-gray-500 mt-1 text-right">
-  {Math.ceil((dados.horaMaquina || 0) / HORAS_DIA)} dias usados •{" "}
-  {Math.max(0, Math.floor(dados.diasDisponiveis))} dias disponíveis
-</p>
+                {Math.ceil((dados.horaMaquina || 0) / HORAS_DIA)} dias usados •{" "}
+                {Math.max(0, Math.floor(dados.diasDisponiveis))} dias disponíveis
+              </p>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1">
@@ -889,20 +908,20 @@ const Dashboard = ({ resumo }) => {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-2">
-  <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
-    <p className="text-[10px] font-black text-blue-400 uppercase">Dias Totais</p>
-    <p className="text-lg font-black text-blue-900">
-      {dados.diasTotais.toFixed(1)}
-    </p>
-  </div>
+                <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
+                  <p className="text-[10px] font-black text-blue-400 uppercase">Dias Totais</p>
+                  <p className="text-lg font-black text-blue-900">
+                    {dados.diasTotais.toFixed(1)}
+                  </p>
+                </div>
 
-  <div className="bg-emerald-50 p-3 rounded-2xl text-center border border-emerald-100">
-    <p className="text-[10px] font-black text-emerald-400 uppercase">Dias Disponíveis</p>
-    <p className={`text-lg font-black ${dados.diasDisponiveis < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-      {dados.diasDisponiveis.toFixed(1)}
-    </p>
-  </div>
-</div>
+                <div className="bg-emerald-50 p-3 rounded-2xl text-center border border-emerald-100">
+                  <p className="text-[10px] font-black text-emerald-400 uppercase">Dias Disponíveis</p>
+                  <p className={`text-lg font-black ${dados.diasDisponiveis < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                    {dados.diasDisponiveis.toFixed(1)}
+                  </p>
+                </div>
+              </div>
 
               <div className="bg-blue-50 p-3 rounded-2xl text-center border border-blue-100">
                 <p className="text-[10px] font-black text-blue-400 uppercase">Capacidade</p>
@@ -942,6 +961,7 @@ const App = () => {
     pedido: '',
     cliente: '',
     vendedor: VENDEDORES[0],
+    status: 'AGUARDANDO RETIRADA',
     tipoTelha: TIPOS_TELHAS[0],
     totalMetros: '',
     maquina: MAQUINAS[0],
@@ -968,7 +988,7 @@ const App = () => {
   useEffect(() => {
     const pedidosCarregados = carregarPedidos();
     setPedidos(pedidosCarregados);
-    
+
     const estoqueCarregado = carregarEstoque();
     setEstoque(estoqueCarregado);
   }, []);
@@ -1038,7 +1058,7 @@ const App = () => {
     }, 0);
 
     let diasProducao = Math.ceil((tempoTotal + horasFila) / HORAS_DIA);
-    
+
     // Acréscimo de 5 dias para PÓS PINTADA
     if (formData.tipoPintura === 'PÓS PINTADA') {
       diasProducao += 15;
@@ -1063,6 +1083,39 @@ const App = () => {
     metrosPorHora,
     metrosPorHoraColadas
   ]);
+  useEffect(() => {
+    if (!pedidos.length) return;
+
+    const pedidosRecalculados = pedidos.map(p => {
+      const metros = Number(p.totalMetros) || 0;
+      const maquinaRaw = (p.maquina || '').trim();
+      const maquina = maquinaRaw.toUpperCase();
+
+      const isColada = maquina.startsWith("COLADA");
+      const maquinaBase = isColada ? maquina.replace("COLADA ", "") : maquina;
+
+      const taxa = isColada
+        ? metrosPorHoraColadas[maquinaBase]
+        : metrosPorHora[maquinaBase];
+
+      if (!taxa) return p;
+
+      const horaMaquina = metros / taxa;
+      const horaMontagem = isColada ? 15 : 0;
+      const tempoTotal = horaMaquina + horaMontagem;
+
+      return {
+        ...p,
+        horaMaquina: horaMaquina.toFixed(2),
+        horaMontagem: horaMontagem.toFixed(2),
+        tempoTotalProducao: tempoTotal.toFixed(2)
+      };
+    });
+
+    setPedidos(pedidosRecalculados);
+    salvarPedidos(pedidosRecalculados);
+  }, [metrosPorHora, metrosPorHoraColadas]);
+
 
   const adicionarMaterial = () => {
     if (estoque.length === 0) {
@@ -1108,14 +1161,14 @@ const App = () => {
     if (editingPedido) {
       novosPedidos = pedidos.map(p => p.id === editingPedido.id ? { ...dadosPedido, id: editingPedido.id } : p);
     } else {
-      const novoPedido = { 
-        ...dadosPedido, 
+      const novoPedido = {
+        ...dadosPedido,
         id: Date.now().toString(),
-        createdAt: new Date().toISOString() 
+        createdAt: new Date().toISOString()
       };
       novosPedidos = [...pedidos, novoPedido];
     }
-    
+
     setPedidos(novosPedidos);
     salvarPedidos(novosPedidos);
     resetForm();
@@ -1163,14 +1216,14 @@ const App = () => {
   };
 
   const exportarDados = () => {
-    const dataToExport = { 
-      pedidos, 
+    const dataToExport = {
+      pedidos,
       metrosPorHora,
       metrosPorHoraColadas,
       estoque,
-      exportDate: new Date().toISOString() 
+      exportDate: new Date().toISOString()
     };
-    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], {type: 'application/json'});
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1234,60 +1287,62 @@ const App = () => {
   // Dashboard Stats
   const resumoDashboard = useMemo(() => {
     const porMaquina = {};
-    Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => porMaquina[m] = { 
-      horaMaquina: 0, 
+    Object.keys(metrosPorHora).forEach(m => porMaquina[m] = {
+
+      horaMaquina: 0,
       horaMontagem: 0,
-      horasUsadas: 0, 
-      pedidos: [] 
+      horasUsadas: 0,
+      pedidos: []
     });
-    
-	    const porPintura = {};
-	    TIPOS_PINTURA.forEach(p => porPintura[p] = 0);
 
-	    pedidos.forEach(p => {
-	      const maquinaBase = p.maquina.replace('Colada ', '');
-	      if (porMaquina[maquinaBase]) {
-	        const hMaq = parseFloat(p.horaMaquina) || 0;
-	        const hMont = parseFloat(p.horaMontagem) || 0;
-	        
-	        porMaquina[maquinaBase].horaMaquina += hMaq;
-	        porMaquina[maquinaBase].horaMontagem += hMont;
-	        porMaquina[maquinaBase].horasUsadas += (hMaq + hMont);
-	        porMaquina[maquinaBase].pedidos.push(p);
-	      }
-	      
-	      const pintura = p.tipoPintura || 'SEM PINTURA';
-	      if (porPintura.hasOwnProperty(pintura)) {
-	        porPintura[pintura] += 1;
-	      }
-	    });
-    
-const resultado = {};
-Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
-  const capacidadeHoras = HORAS_MES_POR_MAQUINA; // ex: 800h/mês
-  const usadasHoras = porMaquina[m].horasUsadas;
+    const porPintura = {};
+    TIPOS_PINTURA.forEach(p => porPintura[p] = 0);
 
-  const diasTotais = capacidadeHoras / HORAS_DIA;     // ex: 800 / 8 = 100 dias
-  const diasUsados = usadasHoras / HORAS_DIA;
-  const diasDisponiveis = diasTotais - diasUsados;
+    pedidos.forEach(p => {
+      const maquinaBase = p.maquina.replace('Colada ', '');
+      if (porMaquina[maquinaBase]) {
+        const hMaq = parseFloat(p.horaMaquina) || 0;
+        const hMont = parseFloat(p.horaMontagem) || 0;
 
-  resultado[m] = { 
-    capacidade: capacidadeHoras, 
-    usadas: usadasHoras, 
-    saldo: capacidadeHoras - usadasHoras, 
-    pedidos: porMaquina[m].pedidos,
-    horaMaquina: porMaquina[m].horaMaquina,
-    horaMontagem: porMaquina[m].horaMontagem,
+        porMaquina[maquinaBase].horaMaquina += hMaq;
+        porMaquina[maquinaBase].horaMontagem += hMont;
+        porMaquina[maquinaBase].horasUsadas += (hMaq + hMont);
+        porMaquina[maquinaBase].pedidos.push(p);
+      }
 
-	    // 👇 NOVOS CAMPOS
-	    diasTotais,
-	    diasDisponiveis,
-	    diasUsados
-	  };
-	});
-	
-	    return { porMaquina: resultado, porPintura };
-	  }, [pedidos]);
+      const pintura = p.tipoPintura || 'SEM PINTURA';
+      if (porPintura.hasOwnProperty(pintura)) {
+        porPintura[pintura] += 1;
+      }
+    });
+
+    const resultado = {};
+    Object.keys(metrosPorHora).forEach(m => {
+
+      const capacidadeHoras = HORAS_MES_POR_MAQUINA; // ex: 800h/mês
+      const usadasHoras = porMaquina[m].horasUsadas;
+
+      const diasTotais = capacidadeHoras / HORAS_DIA;     // ex: 800 / 8 = 100 dias
+      const diasUsados = usadasHoras / HORAS_DIA;
+      const diasDisponiveis = diasTotais - diasUsados;
+
+      resultado[m] = {
+        capacidade: capacidadeHoras,
+        usadas: usadasHoras,
+        saldo: capacidadeHoras - usadasHoras,
+        pedidos: porMaquina[m].pedidos,
+        horaMaquina: porMaquina[m].horaMaquina,
+        horaMontagem: porMaquina[m].horaMontagem,
+
+        // 👇 NOVOS CAMPOS
+        diasTotais,
+        diasDisponiveis,
+        diasUsados
+      };
+    });
+
+    return { porMaquina: resultado, porPintura };
+  }, [pedidos]);
 
   const filteredPedidos = useMemo(() => {
     return pedidos.filter(p => {
@@ -1309,26 +1364,91 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-blue-900 text-white p-6 shadow-xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-white p-2 rounded-xl shadow-inner"><Package className="text-blue-900" size={32} /></div>
-            <div>
-              <h1 className="text-3xl font-black tracking-tight">MESTRE AÇO SP</h1>
-              <p className="text-blue-200 text-xs font-medium uppercase tracking-widest">Sistema de Logística Local v12.0</p>
-            </div>
+    <div className="min-h-screen bg-gray-50"><header className="bg-[#192d38] text-white p-6 shadow-xl">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+
+        <div className="flex items-center gap-4">
+          <div className="bg-white p-2 rounded-xl shadow-inner">
+            <img
+              src="/mestreaco_logo1.png"
+              alt="Mestre Aço"
+              className="h-20 w-auto"
+            />
           </div>
-          <nav className="flex bg-blue-800/50 p-1 rounded-xl backdrop-blur-sm flex-wrap">
-            <button onClick={() => setActiveTab('status-diario')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'status-diario' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><BarChart3 size={18} /> <span className="font-bold">Status Diário</span></button>
-            <button onClick={() => setActiveTab('pedidos')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'pedidos' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Pedidos</span></button>
-            <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><BarChart3 size={18} /> <span className="font-bold">Dashboard</span></button>
-            <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'estoque' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><Package size={18} /> <span className="font-bold">Estoque</span></button>
-            <button onClick={() => setActiveTab('regioes')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'regioes' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><MapPin size={18} /> <span className="font-bold">Regiões</span></button>
-            <button onClick={() => setActiveTab('config')} className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'config' ? 'bg-white text-blue-900 shadow-lg' : 'text-blue-100 hover:bg-blue-700/50'}`}><SettingsIcon size={18} /> <span className="font-bold">Config</span></button>
-          </nav>
+
+          <div>
+            <h1 className="text-3xl font-black tracking-tight">MESTRE AÇO SP</h1>
+            <p className="text-gray-300 text-xs font-medium uppercase tracking-widest">
+              Sistema de Logística
+            </p>
+          </div>
         </div>
-      </header>
+
+        <nav className="flex bg-[#192d38] p-1 rounded-xl flex-wrap border border-white/10">
+          <button
+            onClick={() => setActiveTab('status-diario')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'status-diario'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <BarChart3 size={18} /> <span className="font-bold">Status Diário</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('pedidos')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'pedidos'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <Package size={18} /> <span className="font-bold">Pedidos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'dashboard'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <BarChart3 size={18} /> <span className="font-bold">Dashboard</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('estoque')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'estoque'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <Package size={18} /> <span className="font-bold">Estoque</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('regioes')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'regioes'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <MapPin size={18} /> <span className="font-bold">Regiões</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all ${activeTab === 'config'
+              ? 'bg-white text-[#192d38] shadow-lg'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+          >
+            <SettingsIcon size={18} /> <span className="font-bold">Config</span>
+          </button>
+        </nav>
+
+      </div>
+    </header>
+
 
       <main className="max-w-7xl mx-auto p-4 md:p-6">
         {activeTab === 'status-diario' && <StatusDiario pedidos={pedidos} />}
@@ -1339,7 +1459,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
               <div className="flex items-center gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Carteira de Pedidos</h2>
                 {selectedPedidos.size > 0 && (
-                  <button 
+                  <button
                     onClick={handleBulkDelete}
                     className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-xl hover:bg-red-100 transition-all border border-red-100 font-bold text-sm animate-in fade-in slide-in-from-left-4"
                   >
@@ -1384,8 +1504,20 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Data Entrada</label><input type="date" value={formData.dataEntrada} onChange={(e) => setFormData({ ...formData, dataEntrada: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" /></div>
                     <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Nº Pedido *</label><input type="text" required value={formData.pedido} onChange={(e) => setFormData({ ...formData, pedido: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Ex: 12345" /></div>
-                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Cliente *</label><input type="text" required value={formData.cliente} onChange={(e) => setFormData({ ...formData, cliente: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Nome do cliente" /></div>
-                    
+                    <div className="space-y-1"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Cliente *</label><input type="text" required value={formData.cliente} onChange={(e) => setFormData({ ...formData, cliente: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Nome do cliente" /></div><div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Status do Pedido</label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                      >
+                        {STATUS_PEDIDO.map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    </div>
+
+
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase ml-1">Vendedor</label>
                       <select value={formData.vendedor} onChange={(e) => setFormData({ ...formData, vendedor: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
@@ -1393,20 +1525,21 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       </select>
                     </div>
 
-	                    <div className="space-y-1">
-	                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
-	                      <div className="flex gap-2">
-	                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'ENTREGA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
-	                        <button type="button" onClick={() => setFormData({...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA'})} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
-	                      </div>
-	                    </div>
 
-	                    <div className="space-y-1">
-	                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Pintura</label>
-	                      <select value={formData.tipoPintura} onChange={(e) => setFormData({ ...formData, tipoPintura: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
-	                        {TIPOS_PINTURA.map(p => <option key={p} value={p}>{p}</option>)}
-	                      </select>
-	                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Entrega</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setFormData({ ...formData, tipoEntrega: 'ENTREGA' })} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'ENTREGA' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-100 text-gray-400'}`}>Entrega</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, tipoEntrega: 'RETIRADA', cep: '', regiao: 'RETIRADA NA LOJA' })} className={`flex-1 py-2.5 rounded-xl border-2 transition-all font-bold ${formData.tipoEntrega === 'RETIRADA' ? 'border-amber-600 bg-amber-50 text-amber-600' : 'border-gray-100 text-gray-400'}`}>Retirada</button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Tipo de Pintura</label>
+                      <select value={formData.tipoPintura} onChange={(e) => setFormData({ ...formData, tipoPintura: e.target.value })} className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white font-bold text-blue-900">
+                        {TIPOS_PINTURA.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
 
                     {formData.tipoEntrega === 'ENTREGA' && (
                       <div className="space-y-1">
@@ -1419,12 +1552,12 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                           )}
                         </div>
                         <div className="relative">
-                          <input 
-                            type="text" 
-                            value={formData.cep} 
-                            onChange={(e) => setFormData({ ...formData, cep: e.target.value })} 
-                            className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
-                            placeholder="00000-000" 
+                          <input
+                            type="text"
+                            value={formData.cep}
+                            onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                            className="w-full border-gray-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            placeholder="00000-000"
                           />
                           {loadingCep && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -1449,7 +1582,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                   <div className="border-t pt-6">
                     <div className="flex justify-between items-center mb-4">
                       <h4 className="text-lg font-bold text-purple-900">📦 Consumo de Materiais (PIR/EPS)</h4>
-                      <button 
+                      <button
                         type="button"
                         onClick={adicionarMaterial}
                         className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-bold text-sm"
@@ -1470,7 +1603,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                           <div key={index} className="flex gap-3 items-end bg-purple-50 p-4 rounded-xl border border-purple-100">
                             <div className="flex-1 space-y-1">
                               <label className="text-xs font-bold text-purple-600 uppercase ml-1">Material</label>
-                              <select 
+                              <select
                                 value={mat.materialId}
                                 onChange={(e) => atualizarMaterial(index, 'materialId', e.target.value)}
                                 className="w-full border-purple-200 border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none bg-white font-bold text-purple-900"
@@ -1483,7 +1616,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                             </div>
                             <div className="w-48 space-y-1">
                               <label className="text-xs font-bold text-purple-600 uppercase ml-1">Quantidade (m²)</label>
-                              <input 
+                              <input
                                 type="number"
                                 step="0.01"
                                 value={mat.quantidade}
@@ -1504,7 +1637,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
                     <div className="text-center"><p className="text-[10px] font-bold text-gray-400 uppercase">Hora Máquina</p><p className="text-lg font-black text-blue-900">{formData.horaMaquina || '0.00'}h</p></div>
                     <div className="text-center">
@@ -1536,28 +1669,28 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
               <div className="flex flex-wrap gap-4 items-end">
                 <div className="flex-1 min-w-[200px] space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Filtrar Cliente</label>
-                  <input type="text" value={filters.cliente} onChange={(e) => setFilters({...filters, cliente: e.target.value})} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nome do cliente..." />
+                  <input type="text" value={filters.cliente} onChange={(e) => setFilters({ ...filters, cliente: e.target.value })} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nome do cliente..." />
                 </div>
                 <div className="w-32 space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Pedido</label>
-                  <input type="text" value={filters.pedido} onChange={(e) => setFilters({...filters, pedido: e.target.value})} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nº..." />
+                  <input type="text" value={filters.pedido} onChange={(e) => setFilters({ ...filters, pedido: e.target.value })} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Nº..." />
                 </div>
                 <div className="w-48 space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Vendedor</label>
-                  <select value={filters.vendedor} onChange={(e) => setFilters({...filters, vendedor: e.target.value})} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                  <select value={filters.vendedor} onChange={(e) => setFilters({ ...filters, vendedor: e.target.value })} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                     <option value="">Todos</option>
                     {VENDEDORES.map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
                 <div className="w-32 space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Mín. Metros</label>
-                  <input type="number" value={filters.metro} onChange={(e) => setFilters({...filters, metro: e.target.value})} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00" />
+                  <input type="number" value={filters.metro} onChange={(e) => setFilters({ ...filters, metro: e.target.value })} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0.00" />
                 </div>
                 <div className="w-40 space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Data Sugerida</label>
-                  <input type="date" value={filters.dataSugerida} onChange={(e) => setFilters({...filters, dataSugerida: e.target.value})} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="date" value={filters.dataSugerida} onChange={(e) => setFilters({ ...filters, dataSugerida: e.target.value })} className="w-full border-gray-200 border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
-                <button onClick={() => setFilters({cliente: '', pedido: '', vendedor: '', metro: '', dataSugerida: ''})} className="px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors uppercase">Limpar</button>
+                <button onClick={() => setFilters({ cliente: '', pedido: '', vendedor: '', metro: '', dataSugerida: '' })} className="px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors uppercase">Limpar</button>
               </div>
             </div>
 
@@ -1567,8 +1700,8 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
                       <th className="px-4 py-4 w-10">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           checked={filteredPedidos.length > 0 && selectedPedidos.size === filteredPedidos.length}
                           onChange={toggleSelectAll}
@@ -1578,6 +1711,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       <th className="px-4 py-4 font-bold text-gray-600">Pedido</th>
                       <th className="px-4 py-4 font-bold text-gray-600">Cliente</th>
                       <th className="px-4 py-4 font-bold text-gray-600">Vendedor</th>
+                      <th className="px-6 py-4 text-center font-bold text-gray-600 uppercase tracking-wider">Status</th>
                       <th className="px-4 py-4 font-bold text-gray-600">Máquina</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-right">Metros</th>
                       <th className="px-4 py-4 font-bold text-gray-600 text-center">Materiais</th>
@@ -1601,8 +1735,8 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                       filteredPedidos.map((p) => (
                         <tr key={p.id} className={`hover:bg-blue-50/30 transition-colors group ${selectedPedidos.has(p.id) ? 'bg-blue-50/50' : ''}`}>
                           <td className="px-4 py-4">
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               checked={selectedPedidos.has(p.id)}
                               onChange={() => toggleSelectPedido(p.id)}
@@ -1627,6 +1761,16 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
                               <span className="text-gray-400 text-xs">-</span>
                             )}
                           </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-3 py-1 rounded-lg text-xs font-black
+    ${p.status === 'FATURADO' ? 'bg-emerald-100 text-emerald-700' :
+                                p.status === 'FINALIZADO' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-amber-100 text-amber-700'}
+  `}>
+                              {p.status}
+                            </span>
+                          </td>
+
                           <td className="px-4 py-4 text-right font-black text-green-700">{parseFloat(p.diasSugeridos || 0).toFixed(1)}d</td>
                           <td className="px-4 py-4 text-right font-bold text-green-700 text-xs">{formatarDataBR(p.dataPrevistaProducao)}</td>
                           <td className="px-4 py-4">
@@ -1658,7 +1802,7 @@ Object.keys(PRODUCAO_MAQUINAS_PADRAO).forEach(m => {
       </main>
 
       <footer className="max-w-7xl mx-auto p-6 text-center text-gray-400 text-xs font-medium uppercase tracking-widest">
-        &copy; {new Date().getFullYear()} Mestre Aço SP - Sistema de Logística Local v12.0
+        &copy; {new Date().getFullYear()} Mestre Aço SP - Desenvolvido por Kevin Andrew
       </footer>
     </div>
   );
