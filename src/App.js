@@ -29,7 +29,7 @@ const TIPOS_TELHAS = ['SANDUICHE', 'SIMPLES', 'FORRO'];
 const TIPOS_EPS = ['30MM', '50MM', 'PIR30MM', 'PIR50MM'];
 const TIPOS_FRETE = ['CIF', 'FOB'];
 const TIPOS_PINTURA = ['SEM PINTURA', 'PRÉ PINTADA', 'PÓS PINTADA'];
-const STATUS_PEDIDO = ['EM ANDAMENTO', 'FINALIZADO', 'FATURADO','AGUARDANDO RETIRADA'];
+const STATUS_PEDIDO = ['EM ANDAMENTO', 'FINALIZADO', 'FATURADO', 'AGUARDANDO RETIRADA'];
 
 
 const HORAS_DIA = 8; // 8 horas por dia conforme Excel
@@ -208,16 +208,25 @@ const StatusDiario = ({ pedidos = [] }) => {
 /* ===================== FUNÇÕES AUX ===================== */
 const hojeISO = () => new Date().toISOString().split('T')[0];
 
-const calcularDataSugerida = (dataEntradaISO, diasSugeridos) => {
+const calcularDataSugerida = (dataEntradaISO, diasSugeridos, tipoPintura) => {
   if (!dataEntradaISO || !diasSugeridos) return { dataSugerida: hojeISO() };
 
   const data = new Date(dataEntradaISO + 'T12:00:00');
-  data.setDate(data.getDate() + Math.floor(diasSugeridos));
+
+  let diasTotais = Math.floor(diasSugeridos);
+
+  // 👉 Regra nova: se for PÓS PINTADA, soma +15 dias
+  if (tipoPintura === 'PÓS PINTADA') {
+    diasTotais += 15;
+  }
+
+  data.setDate(data.getDate() + diasTotais);
 
   return {
     dataSugerida: data.toISOString().split('T')[0]
   };
 };
+
 
 const formatarDataBR = (iso) => {
   if (!iso) return '';
@@ -1061,10 +1070,15 @@ const App = () => {
 
     // Acréscimo de 5 dias para PÓS PINTADA
     if (formData.tipoPintura === 'PÓS PINTADA') {
-      diasProducao += 15;
+      diasProducao += 0;
     }
 
-    const { dataSugerida } = calcularDataSugerida(formData.dataEntrada, diasProducao);
+    const { dataSugerida } = calcularDataSugerida(
+      formData.dataEntrada,
+      diasProducao,
+      formData.tipoPintura
+    );
+
 
     setFormData(prev => ({
       ...prev,
