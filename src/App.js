@@ -1315,6 +1315,14 @@ const App = () => {
     pedidos.forEach(p => {
       const maquinaBase = p.maquina.replace('Colada ', '');
       if (porMaquina[maquinaBase]) {
+        // Excluir status específicos da contagem de horas no dashboard
+        if (['FATURADO', 'FINALIZADO', 'AGUARDANDO RETIRADA'].includes(p.status)) {
+          const pintura = p.tipoPintura || 'SEM PINTURA';
+          if (porPintura.hasOwnProperty(pintura)) {
+            porPintura[pintura] += 1;
+          }
+          return;
+        }
         const hMaq = parseFloat(p.horaMaquina) || 0;
         const hMont = parseFloat(p.horaMontagem) || 0;
 
@@ -1369,13 +1377,16 @@ const App = () => {
     });
   }, [pedidos, filters]);
 
-  const resumo = {
-    totalPedidos: pedidos.length,
-    totalMetros: pedidos.reduce((acc, p) => acc + (parseFloat(p.totalMetros) || 0), 0).toFixed(2),
-    totalHoraMaquina: pedidos.reduce((acc, p) => acc + (parseFloat(p.horaMaquina) || 0), 0).toFixed(2),
-    totalHoraMontagem: pedidos.reduce((acc, p) => acc + (parseFloat(p.horaMontagem) || 0), 0).toFixed(2),
-    totalProducao: pedidos.reduce((acc, p) => acc + (parseFloat(p.tempoTotalProducao) || 0), 0).toFixed(2)
-  };
+  const resumo = useMemo(() => {
+    const pedidosAtivos = pedidos.filter(p => !['FATURADO', 'FINALIZADO', 'AGUARDANDO RETIRADA'].includes(p.status));
+    return {
+      totalPedidos: pedidos.length,
+      totalMetros: pedidos.reduce((acc, p) => acc + (parseFloat(p.totalMetros) || 0), 0).toFixed(2),
+      totalHoraMaquina: pedidosAtivos.reduce((acc, p) => acc + (parseFloat(p.horaMaquina) || 0), 0).toFixed(2),
+      totalHoraMontagem: pedidosAtivos.reduce((acc, p) => acc + (parseFloat(p.horaMontagem) || 0), 0).toFixed(2),
+      totalProducao: pedidosAtivos.reduce((acc, p) => acc + (parseFloat(p.tempoTotalProducao) || 0), 0).toFixed(2)
+    };
+  }, [pedidos]);
 
   return (
     <div className="min-h-screen bg-gray-50"><header className="bg-[#192d38] text-white p-6 shadow-xl">
