@@ -824,17 +824,281 @@ const Settings = ({ metrosPorHora, setMetrosPorHora, metrosPorHoraColadas, setMe
     </div>
   </div>
 );
-
-const Dashboard = ({ resumo }) => {
+const Dashboard = ({ resumo, pedidos = [] }) => {
   const { porMaquina, porPintura } = resumo;
   const totalPedidos = Object.values(porPintura).reduce((a, b) => a + b, 0);
+  
+  // Estado para filtros
+  const [filtroMes, setFiltroMes] = useState('todos');
+  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+
+  // Gerar lista de meses e anos disponíveis
+  const { mesesDisponiveis, anosDisponiveis } = useMemo(() => {
+    const meses = new Set();
+    const anos = new Set();
+    
+    pedidos.forEach(p => {
+      if (p.dataEntrada) {
+        const [ano, mes] = p.dataEntrada.split('-');
+        meses.add(mes);
+        anos.add(ano);
+      }
+    });
+    
+    return {
+      mesesDisponiveis: Array.from(meses).sort(),
+      anosDisponiveis: Array.from(anos).sort().reverse()
+    };
+  }, [pedidos]);
+
+  // Filtrar pedidos por mês/ano
+  const pedidosFiltrados = useMemo(() => {
+    return pedidos.filter(p => {
+      if (!p.dataEntrada) return false;
+      
+      const [ano, mes] = p.dataEntrada.split('-');
+      const matchAno = filtroAno === 'todos' || ano === filtroAno;
+      const matchMes = filtroMes === 'todos' || mes === filtroMes;
+      
+      return matchAno && matchMes;
+    });
+  }, [pedidos, filtroMes, filtroAno]);
+
+  // Análise de Clientes
+  const analiseClientes = useMemo(() => {
+    const clientesMap = new Map();
+    
+    pedidosFiltrados.forEach(p => {
+      if (!clientesMap.has(p.cliente)) {
+        clientesMap.set(p.cliente, {
+          nome: p.cliente,
+          totalPedidos: 0,
+          totalMetros: 0,
+          pedidos: []
+        });
+      }
+      
+      const cliente = clientesMap.get(p.cliente);
+      cliente.totalPedidos += 1;
+      cliente.totalMetros += parseFloat(p.totalMetros) || 0;
+      cliente.pedidos.push(p);
+    });
+    
+    return Array.from(clientesMap.values())
+      .sort((a, b) => b.totalMetros - a.totalMetros);
+  }, [pedidosFiltrados]);
+
+  // Análise de Regiões
+  const analiseRegioes = useMemo(() => {
+    const regioesMap = new Map();
+    
+    pedidosFiltrados.forEach(p => {
+      const regiao = p.tipoEntrega === 'RETIRADA' ? 'RETIRADA NA LOJA' : (p.regiao || 'NÃO INFORMADO');
+      
+      if (!regioesMap.has(regiao)) {
+        regioesMap.set(regiao, {
+          nome: regiao,
+          totalPedidos: 0,
+          totalMetros: 0,
+          clientes: new Set()
+        });
+      }
+      
+      const reg = regioesMap.get(regiao);
+      reg.totalPedidos += 1;
+      reg.totalMetros += parseFloat(p.totalMetros) || 0;
+      reg.clientes.add(p.cliente);
+    });
+    
+    return Array.from(regioesMap.values())
+      .map(r => ({ ...r, totalClientes: r.clientes.size }))
+      .sort((a, b) => b.totalPedidos - a.totalPedidos);
+  }, [pedidosFiltrados]);
+
+  // Totais do período filtrado
+  const totaisPeriodo = useMemo(() => {
+    const totalClientesUnicos = new Set(pedidosFiltrados.map(p => p.cliente)).size;
+    const totalMetrosGeral = pedidosFiltrados.reduce((acc, p) => acc + (parseFloat(p.totalMetros) || 0), 0);
+    const totalPedidosGeral = pedidosFiltrados.length;
+    const totalVendedores = new Set(pedidosFiltrados.map(p => p.vendedor)).size;
+    
+    return {
+      clientes: totalClientesUnicos,
+      metros: totalMetrosGeral,
+      pedidos: totalPedidosGeral,
+      vendedores: totalVendedores
+    };
+  }, [pedidosFiltrados]);
+
+  // Nome do mês em português
+  const getNomeMes = (mes) => {
+    const meses = {
+      '01': 'Janeiro', '02': 'Fevereiro', '03': 'Março', '04': 'Abril',
+      '05': 'Maio', '06': 'Junho', '07': 'Julho', '08': 'Agosto',
+      '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
+    };
+    return meses[mes] || mes;
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Header com Filtros */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <BarChart3 className="text-blue-600" /> Dashboard de Produção
         </h2>
+        
+        {/* Filtros de Período */}
+        <div className="flex flex-wrap gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Ano</label>
+            <select
+              value={filtroAno}
+              onChange={(e) => setFiltroAno(e.target.value)}
+              className="border-gray-200 border rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-900"
+            >
+              <option value="todos">Todos os Anos</option>
+              {anosDisponiveis.map(ano => (
+                <option key={ano} value={ano}>{ano}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Mês</label>
+            <select
+              value={filtroMes}
+              onChange={(e) => setFiltroMes(e.target.value)}
+              className="border-gray-200 border rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-green-700"
+            >
+              <option value="todos">Todos os Meses</option>
+              {mesesDisponiveis.map(mes => (
+                <option key={mes} value={mes}>{getNomeMes(mes)}</option>
+              ))}
+            </select>
+          </div>
+          
+          <button
+            onClick={() => { setFiltroMes('todos'); setFiltroAno(new Date().getFullYear().toString()); }}
+            className="self-end px-4 py-2 text-xs font-bold text-gray-500 hover:text-red-600 transition-colors"
+          >
+            Resetar
+          </button>
+        </div>
+      </div>
+
+      {/* Cards de Resumo do Período */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black uppercase tracking-widest opacity-90">Total Pedidos</span>
+            <Package size={24} className="opacity-80" />
+          </div>
+          <p className="text-4xl font-black mb-1">{totaisPeriodo.pedidos}</p>
+          <p className="text-xs opacity-80 font-bold">
+            {filtroMes !== 'todos' ? `em ${getNomeMes(filtroMes)}` : 'no período'}
+          </p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black uppercase tracking-widest opacity-90">Clientes Atendidos</span>
+            <User size={24} className="opacity-80" />
+          </div>
+          <p className="text-4xl font-black mb-1">{totaisPeriodo.clientes}</p>
+          <p className="text-xs opacity-80 font-bold">clientes únicos</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black uppercase tracking-widest opacity-90">Total Metros</span>
+            <BarChart3 size={24} className="opacity-80" />
+          </div>
+          <p className="text-4xl font-black mb-1">{totaisPeriodo.metros.toFixed(2)}</p>
+          <p className="text-xs opacity-80 font-bold">metros quadrados</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 p-6 rounded-2xl shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black uppercase tracking-widest opacity-90">Vendedores Ativos</span>
+            <User size={24} className="opacity-80" />
+          </div>
+          <p className="text-4xl font-black mb-1">{totaisPeriodo.vendedores}</p>
+          <p className="text-xs opacity-80 font-bold">equipe de vendas</p>
+        </div>
+      </div>
+
+      {/* Top 5 Clientes */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-blue-900 mb-6 flex items-center gap-2">
+          <User size={20} className="text-blue-600" /> Top 10 Clientes que Mais Compraram
+        </h3>
+        <div className="space-y-3">
+          {analiseClientes.slice(0, 10).map((cliente, index) => (
+            <div key={cliente.nome} className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-center w-10 h-10 bg-blue-600 text-white rounded-full font-black">
+                {index + 1}
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-blue-900">{cliente.nome}</p>
+                <p className="text-xs text-gray-500 font-bold">{cliente.totalPedidos} pedidos realizados</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-black text-blue-600">{cliente.totalMetros.toFixed(2)}<span className="text-sm">m²</span></p>
+                <p className="text-xs text-gray-400 font-bold">volume total</p>
+              </div>
+            </div>
+          ))}
+          
+          {analiseClientes.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              <User size={48} className="mx-auto mb-2 opacity-20" />
+              <p className="font-bold">Nenhum cliente encontrado no período selecionado</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Top Regiões */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-blue-900 mb-6 flex items-center gap-2">
+          <MapPin size={20} className="text-red-600" /> Regiões com Mais Pedidos
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {analiseRegioes.slice(0, 6).map((regiao, index) => (
+            <div key={regiao.nome} className="p-5 bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl border border-red-100">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-8 h-8 bg-red-600 text-white rounded-full font-black text-sm">
+                    {index + 1}
+                  </div>
+                  <div>
+                    <p className="font-black text-red-900 text-sm">{regiao.nome}</p>
+                    <p className="text-xs text-red-600 font-bold">{regiao.totalClientes} clientes</p>
+                  </div>
+                </div>
+                <MapPin size={20} className="text-red-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-red-200">
+                <div className="text-center">
+                  <p className="text-xs font-bold text-gray-400 uppercase">Pedidos</p>
+                  <p className="text-xl font-black text-red-900">{regiao.totalPedidos}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-gray-400 uppercase">Metros</p>
+                  <p className="text-xl font-black text-red-900">{regiao.totalMetros.toFixed(0)}<span className="text-xs">m²</span></p>
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {analiseRegioes.length === 0 && (
+            <div className="col-span-2 text-center py-12 text-gray-400">
+              <MapPin size={48} className="mx-auto mb-2 opacity-20" />
+              <p className="font-bold">Nenhuma região encontrada no período selecionado</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Gráfico de Pintura */}
@@ -943,7 +1207,6 @@ const Dashboard = ({ resumo }) => {
     </div>
   );
 };
-
 /* ===================== APP PRINCIPAL ===================== */
 const App = () => {
   const [activeTab, setActiveTab] = useState('status-diario');
@@ -1815,7 +2078,7 @@ const App = () => {
         )}
 
         {activeTab === 'dashboard' && (
-          <Dashboard resumo={resumoDashboard} />
+          <Dashboard resumo={resumoDashboard} pedidos={pedidos} />
         )}
 
         {activeTab === 'estoque' && (
